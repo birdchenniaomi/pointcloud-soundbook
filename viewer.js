@@ -13,7 +13,7 @@ const audio=$('#soundtrack'),audioBtn=$('#audioBtn'),audioIcon=$('#audioIcon'),a
 const sceneMenuBtn=$('#sceneMenuBtn'),sceneDrawer=$('#sceneDrawer'),sceneCloseBtn=$('#sceneCloseBtn'),sceneList=$('#sceneList');
 const prevSceneBtn=$('#prevSceneBtn'),nextSceneBtn=$('#nextSceneBtn');
 
-let debugPanel=null,debugBody=null,debugVisible=true;
+let debugPanel=null,debugBody=null,debugVisible=false;
 let lastGeometryCenter=new THREE.Vector3(),lastBoundingCenter=new THREE.Vector3();
 let pickFocusMode=false, savedView=null;
 const raycaster=new THREE.Raycaster();
@@ -67,8 +67,7 @@ function ensureDebugPanel(){
   debugPanel=document.createElement('section');
   debugPanel.id='debugPanel';
   debugPanel.style.cssText='position:fixed;left:12px;bottom:12px;z-index:40;min-width:290px;max-width:min(92vw,430px);padding:10px 11px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(5,7,7,.82);backdrop-filter:blur(12px);color:rgba(255,255,255,.78);font:10px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap';
-  debugPanel.hidden = true;
-  debugVisible = false;
+  debugPanel.hidden=true;
   const head=document.createElement('div');
   head.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;color:#fff';
   const title=document.createElement('span'); title.textContent='VIEW CALIBRATION';
@@ -231,7 +230,21 @@ async function initCatalog(){try{const r=await fetch('./scenes/index.json',{cach
 
 function bindRange(input,output,uniform,digits=2){input.oninput=()=>{uniform.value=+input.value;output.value=(+input.value).toFixed(digits)}}
 bindRange(pointSize,pointSizeValue,uniforms.uPointSize,3);bindRange(brightness,brightnessValue,uniforms.uBrightness,2);bindRange(globalWave,globalWaveValue,uniforms.uGlobalWave,2);bindRange(localWave,localWaveValue,uniforms.uLocalWave,2);bindRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,2);bindRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,2);bindRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,2);bindRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,2);
-settingsBtn.onclick=()=>{settings.hidden=!settings.hidden;settingsBtn.setAttribute('aria-expanded',String(!settings.hidden))};sceneMenuBtn.onclick=()=>{sceneDrawer.hidden=!sceneDrawer.hidden;sceneMenuBtn.setAttribute('aria-expanded',String(!sceneDrawer.hidden))};sceneCloseBtn.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false')};prevSceneBtn.onclick=()=>loadScene(currentIndex-1);nextSceneBtn.onclick=()=>loadScene(currentIndex+1);resetBtn.onclick=()=>reset(true);waveBtn.onclick=()=>{const on=waveBtn.getAttribute('aria-pressed')!=='true';syncToggle(waveBtn,on);motionTarget=on?1:0};rotateBtn.onclick=()=>{controls.autoRotate=!controls.autoRotate;syncToggle(rotateBtn,controls.autoRotate)};fullscreenBtn.onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch(e){console.warn(e)}};
+function restoreFocusForAutoRotate(){
+  // 將 OrbitControls 的旋轉中心恢復為此場景保存的 focus。
+  // 同時平移攝影機相同的差值，保持目前距離與觀看角度，不會突然跳動。
+  const delta=homeTarget.clone().sub(controls.target);
+  camera.position.add(delta);
+  controls.target.copy(homeTarget);
+  camera.lookAt(homeTarget);
+  controls.update();
+}
+function setAutoRotate(on){
+  if(on)restoreFocusForAutoRotate();
+  controls.autoRotate=on;
+  syncToggle(rotateBtn,on);
+}
+settingsBtn.onclick=()=>{settings.hidden=!settings.hidden;settingsBtn.setAttribute('aria-expanded',String(!settings.hidden))};sceneMenuBtn.onclick=()=>{sceneDrawer.hidden=!sceneDrawer.hidden;sceneMenuBtn.setAttribute('aria-expanded',String(!sceneDrawer.hidden))};sceneCloseBtn.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false')};prevSceneBtn.onclick=()=>loadScene(currentIndex-1);nextSceneBtn.onclick=()=>loadScene(currentIndex+1);resetBtn.onclick=()=>reset(true);waveBtn.onclick=()=>{const on=waveBtn.getAttribute('aria-pressed')!=='true';syncToggle(waveBtn,on);motionTarget=on?1:0};rotateBtn.onclick=()=>setAutoRotate(!controls.autoRotate);fullscreenBtn.onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch(e){console.warn(e)}};
 let ctx=null,analyser=null,data=null,source=null;async function initAudio(){if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaElementSource(audio);analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.92;data=new Uint8Array(analyser.frequencyBinCount);source.connect(analyser);analyser.connect(ctx.destination)}if(ctx.state==='suspended')await ctx.resume()}function setAudioUI(){const p=!audio.paused;audioBtn.classList.toggle('is-playing',p);audioBtn.setAttribute('aria-pressed',String(p));audioIcon.textContent=p?'Ⅱ':'▶';audioLabel.textContent=p?'pause':'listen'}audioBtn.onclick=async()=>{try{await initAudio();audio.paused?await audio.play():audio.pause();setAudioUI()}catch(e){console.error(e);alert('音檔無法播放。')}};audio.onplay=setAudioUI;audio.onpause=setAudioUI;
 function bands(){const smooth=(c,t,a,r)=>THREE.MathUtils.lerp(c,t,t>c?a:r);if(!analyser||audio.paused){uniforms.uBass.value=smooth(uniforms.uBass.value,0,.02,.012);uniforms.uMid.value=smooth(uniforms.uMid.value,0,.018,.010);uniforms.uHigh.value=smooth(uniforms.uHigh.value,0,.014,.008);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,0,.018,.006);return}analyser.getByteFrequencyData(data);const avg=(a,b)=>{let s=0;for(let i=a;i<b;i++)s+=data[i];return s/(b-a)/255};const bass=avg(1,12),mid=avg(12,55),high=avg(55,150),env=Math.max(0,(bass*.65+mid*.28+high*.07)-.08);uniforms.uBass.value=smooth(uniforms.uBass.value,bass,.045,.010);uniforms.uMid.value=smooth(uniforms.uMid.value,mid,.032,.008);uniforms.uHigh.value=smooth(uniforms.uHigh.value,high,.022,.006);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,env,.028,.004)}
-controls.addEventListener('start',()=>{clearTimeout(resumeTimer);controls.autoRotate=false;syncToggle(rotateBtn,false)});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(currentConfig?.autoRotate!==false){controls.autoRotate=true;syncToggle(rotateBtn,true)}},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();renderer.setAnimationLoop(()=>{uniforms.uTime.value=clock.getElapsedTime();bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);controls.update();updateDebugPanel();renderer.render(scene,camera)});initCatalog();
+controls.addEventListener('start',()=>{clearTimeout(resumeTimer);setAutoRotate(false)});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(currentConfig?.autoRotate!==false)setAutoRotate(true)},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();renderer.setAnimationLoop(()=>{uniforms.uTime.value=clock.getElapsedTime();bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);controls.update();updateDebugPanel();renderer.render(scene,camera)});initCatalog();
