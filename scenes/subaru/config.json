@@ -10,7 +10,7 @@
   "soundType": "audio/mpeg",
   "focus": [2.21616,-4.206569,3.946493],
   "cameraPosition": [-2.581652,0.847491,18.757148],
-  "cameraUp": [0,1,0]
+  "cameraUp": [0,1,0],
   "pointSize": 0.08,
   "brightness": 1.0,
   "globalWave": 1.8,
