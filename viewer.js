@@ -35,19 +35,29 @@ void main(){vColor=color;vec3 p=position;float seed=hash(position*31.73);float s
 
 function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));button.classList.toggle('is-active',on)}
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
-function fit(points){
+function fit(points, config={}){
   const g=points.geometry;
   const position=g.getAttribute('position');
   if(!position||position.count===0)return;
 
-  // 先用原始座標計算中心，再逐點扣除中心。
-  // 這比 geometry.translate 對帶有大型世界座標的 PLY 更穩定。
-  g.computeBoundingBox();
+  // 使用所有點的平均中心，而不是外框中心。
+  // 對不對稱、帶有少量離群點的掃描，視覺上會更接近畫面中央。
   const center=new THREE.Vector3();
-  g.boundingBox.getCenter(center);
   for(let i=0;i<position.count;i++){
-    position.setXYZ(
-      i,
+    center.x+=position.getX(i);
+    center.y+=position.getY(i);
+    center.z+=position.getZ(i);
+  }
+  center.multiplyScalar(1/position.count);
+
+  // 可在 config.json 微調視覺中心，例如：[0.1, -0.05, 0]
+  const offset=Array.isArray(config.centerOffset)?config.centerOffset:[0,0,0];
+  center.x-=Number(offset[0]||0);
+  center.y-=Number(offset[1]||0);
+  center.z-=Number(offset[2]||0);
+
+  for(let i=0;i<position.count;i++){
+    position.setXYZ(i,
       position.getX(i)-center.x,
       position.getY(i)-center.y,
       position.getZ(i)-center.z
@@ -55,12 +65,26 @@ function fit(points){
   }
   position.needsUpdate=true;
 
-  // 清除任何可能殘留的物件位移，並重新計算置中後的範圍。
   points.position.set(0,0,0);
   points.rotation.set(0,0,0);
   points.scale.set(1,1,1);
   g.computeBoundingBox();
   g.computeBoundingSphere();
+
+  // 再以 bounding sphere 的殘留中心做一次校正，避免浮點誤差。
+  const residual=g.boundingSphere?.center?.clone()||new THREE.Vector3();
+  if(residual.lengthSq()>1e-12){
+    for(let i=0;i<position.count;i++){
+      position.setXYZ(i,
+        position.getX(i)-residual.x,
+        position.getY(i)-residual.y,
+        position.getZ(i)-residual.z
+      );
+    }
+    position.needsUpdate=true;
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+  }
 
   cloudRadius=Math.max(g.boundingSphere?.radius||0,0.0001);
   uniforms.uScale.value=3.2/cloudRadius;
@@ -69,7 +93,7 @@ function fit(points){
   homeTarget.set(0,0,0);
   const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
   const distance=(cloudRadius/Math.sin(halfFov))*1.12;
-  homePosition.set(distance*.22,distance*.08,distance);
+  homePosition.set(distance*.16,distance*.06,distance);
 
   camera.near=Math.max(cloudRadius/5000,0.001);
   camera.far=Math.max(cloudRadius*50,1000);
@@ -84,7 +108,7 @@ function showLoading(text='載入作品…'){loading.classList.remove('hide');lo
 function fail(m){loading.classList.add('hide');errorBox.hidden=false;errorBox.textContent=m}
 function applyConfig(c){currentConfig=c;document.title=`Point Cloud Sound Book — ${c.title}`;$('#sceneTitle').textContent=c.title||c.id;$('#sceneGps').textContent=c.gps||'';$('#sceneDate').textContent=c.date||'';$('#sceneLabel').textContent=c.sceneLabel||c.id;$('#sceneSubtitle').textContent=c.subtitle||'';setRange(pointSize,pointSizeValue,uniforms.uPointSize,c.pointSize??.005,3);setRange(brightness,brightnessValue,uniforms.uBrightness,c.brightness??1,2);setRange(globalWave,globalWaveValue,uniforms.uGlobalWave,c.globalWave??1.8,2);setRange(localWave,localWaveValue,uniforms.uLocalWave,c.localWave??2.2,2);setRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,c.motionSpeed??.55,2);setRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,c.audioInfluence??1.35,2);setRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,c.fireflyAmount??.45,2);setRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,c.fireflyRange??1.2,2);controls.autoRotate=c.autoRotate!==false;motionTarget=c.motionEnabled===false?0:1;syncToggle(rotateBtn,controls.autoRotate);syncToggle(waveBtn,motionTarget>0);audio.pause();audio.innerHTML='';if(c.sound){const src=document.createElement('source');src.src=c.sound;src.type=c.soundType||'';audio.appendChild(src);audio.load()}setAudioUI()}
 function removeCloud(){if(currentPoints){scene.remove(currentPoints);currentPoints.geometry.dispose();currentPoints=null}}
-async function loadScene(index,push=true){if(!catalog.length)return;currentIndex=(index+catalog.length)%catalog.length;const token=++loadToken;showLoading('載入作品資料…');try{const configUrl=catalog[currentIndex].config;const res=await fetch(configUrl,{cache:'no-store'});if(!res.ok)throw new Error(`config ${res.status}`);const c=await res.json();if(token!==loadToken)return;applyConfig(c);renderSceneList();showLoading('載入點雲…');new PLYLoader().load(c.model,g=>{if(token!==loadToken){g.dispose();return}if(!g.getAttribute('position'))return fail('PLY 沒有頂點資料。');if(!g.getAttribute('color')){const a=new Float32Array(g.getAttribute('position').count*3).fill(1);g.setAttribute('color',new THREE.BufferAttribute(a,3))}removeCloud();currentPoints=new THREE.Points(g,material);currentPoints.frustumCulled=false;scene.add(currentPoints);fit(currentPoints);loadingText.textContent=`完成：${g.getAttribute('position').count.toLocaleString()} 點`;setTimeout(()=>loading.classList.add('hide'),250);if(push){const u=new URL(location.href);u.searchParams.set('scene',c.id);history.replaceState(null,'',u)}} ,e=>{if(token!==loadToken)return;if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);loadingProgress.value=p;loadingText.textContent=`載入點雲… ${p}%`}else loadingText.textContent=`載入點雲… ${(e.loaded/1048576).toFixed(1)} MB`},()=>{if(token===loadToken)fail(`無法載入 ${c.model}`)})}catch(e){console.error(e);fail('作品設定載入失敗。')}}
+async function loadScene(index,push=true){if(!catalog.length)return;currentIndex=(index+catalog.length)%catalog.length;const token=++loadToken;showLoading('載入作品資料…');try{const configUrl=catalog[currentIndex].config;const res=await fetch(configUrl,{cache:'no-store'});if(!res.ok)throw new Error(`config ${res.status}`);const c=await res.json();if(token!==loadToken)return;applyConfig(c);renderSceneList();showLoading('載入點雲…');new PLYLoader().load(c.model,g=>{if(token!==loadToken){g.dispose();return}if(!g.getAttribute('position'))return fail('PLY 沒有頂點資料。');if(!g.getAttribute('color')){const a=new Float32Array(g.getAttribute('position').count*3).fill(1);g.setAttribute('color',new THREE.BufferAttribute(a,3))}removeCloud();currentPoints=new THREE.Points(g,material);currentPoints.frustumCulled=false;scene.add(currentPoints);fit(currentPoints,c);loadingText.textContent=`完成：${g.getAttribute('position').count.toLocaleString()} 點`;setTimeout(()=>loading.classList.add('hide'),250);if(push){const u=new URL(location.href);u.searchParams.set('scene',c.id);history.replaceState(null,'',u)}} ,e=>{if(token!==loadToken)return;if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);loadingProgress.value=p;loadingText.textContent=`載入點雲… ${p}%`}else loadingText.textContent=`載入點雲… ${(e.loaded/1048576).toFixed(1)} MB`},()=>{if(token===loadToken)fail(`無法載入 ${c.model}`)})}catch(e){console.error(e);fail('作品設定載入失敗。')}}
 function renderSceneList(){sceneList.innerHTML='';catalog.forEach((item,i)=>{const b=document.createElement('button');b.className=i===currentIndex?'is-current':'';b.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><span><strong>${item.title||item.id}</strong><small>${item.date||''}</small></span>`;b.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false');loadScene(i)};sceneList.appendChild(b)});prevSceneBtn.disabled=catalog.length<2;nextSceneBtn.disabled=catalog.length<2}
 async function initCatalog(){try{const r=await fetch('./scenes/index.json',{cache:'no-store'});if(!r.ok)throw new Error(r.status);const data=await r.json();catalog=await Promise.all(data.scenes.map(async s=>{try{const rr=await fetch(s.config,{cache:'no-store'});const c=await rr.json();return {...s,title:c.title,date:c.date,id:c.id||s.id}}catch{return s}}));const requested=new URL(location.href).searchParams.get('scene');let idx=catalog.findIndex(s=>s.id===requested);if(idx<0)idx=Math.max(0,catalog.findIndex(s=>s.id===data.defaultScene));renderSceneList();loadScene(idx,false)}catch(e){console.error(e);fail('無法載入 scenes/index.json')}}
 
