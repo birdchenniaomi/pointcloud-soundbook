@@ -15,6 +15,10 @@ const prevSceneBtn=$('#prevSceneBtn'),nextSceneBtn=$('#nextSceneBtn');
 
 let debugPanel=null,debugBody=null,debugVisible=true;
 let lastGeometryCenter=new THREE.Vector3(),lastBoundingCenter=new THREE.Vector3();
+let pickFocusMode=false, savedView=null;
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+let focusMarker=null;
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x070808); scene.fog=new THREE.FogExp2(0x070808,.011);
@@ -39,29 +43,82 @@ void main(){vColor=color;vec3 p=position;float seed=hash(position*31.73);float s
 function ensureDebugPanel(){
   if(debugPanel)return;
   debugPanel=document.createElement('section');
-  debugPanel.id='debugCoordinates';
-  debugPanel.style.cssText=`position:fixed;left:12px;bottom:12px;z-index:40;max-width:min(92vw,430px);padding:10px 12px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(5,7,7,.78);backdrop-filter:blur(10px);color:rgba(255,255,255,.86);font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em;white-space:pre;pointer-events:auto`;
+  debugPanel.id='debugPanel';
+  debugPanel.style.cssText='position:fixed;left:12px;bottom:12px;z-index:40;min-width:290px;max-width:min(92vw,430px);padding:10px 11px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(5,7,7,.82);backdrop-filter:blur(12px);color:rgba(255,255,255,.78);font:10px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap';
   const head=document.createElement('div');
-  head.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;color:#fff';
-  const title=document.createElement('span'); title.textContent='COORDINATES';
-  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:6px';
-  const copy=document.createElement('button'); copy.textContent='COPY JSON';
+  head.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;color:#fff';
+  const title=document.createElement('span'); title.textContent='VIEW CALIBRATION';
   const hide=document.createElement('button'); hide.textContent='HIDE';
-  for(const b of [copy,hide])b.style.cssText='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:transparent;color:inherit;padding:3px 7px;font:inherit;cursor:pointer';
-  debugBody=document.createElement('div');
-  copy.onclick=async()=>{
-    const t=controls.target;
-    const text=`\"viewTarget\": [${t.x.toFixed(6)}, ${t.y.toFixed(6)}, ${t.z.toFixed(6)}]`;
-    try{await navigator.clipboard.writeText(text);copy.textContent='COPIED';setTimeout(()=>copy.textContent='COPY JSON',1000)}catch{prompt('複製到 config.json：',text)}
-  };
+  hide.style.cssText='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:transparent;color:inherit;padding:3px 7px;font:inherit;cursor:pointer';
   hide.onclick=()=>{debugVisible=false;debugPanel.hidden=true};
-  actions.append(copy,hide);head.append(title,actions);debugPanel.append(head,debugBody);document.body.appendChild(debugPanel);
+  head.append(title,hide);
+
+  const actions=document.createElement('div');
+  actions.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:8px';
+  const makeButton=(label)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='border:1px solid rgba(255,255,255,.22);border-radius:7px;background:rgba(255,255,255,.035);color:#fff;padding:6px 7px;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer';return b};
+  const pick=makeButton('PICK FOCUS');
+  const save=makeButton('SAVE VIEW');
+  const copy=makeButton('COPY CONFIG');
+  const download=makeButton('DOWNLOAD JSON');
+
+  pick.onclick=()=>{
+    pickFocusMode=!pickFocusMode;
+    pick.textContent=pickFocusMode?'CLICK A POINT…':'PICK FOCUS';
+    pick.style.background=pickFocusMode?'rgba(255,255,255,.18)':'rgba(255,255,255,.035)';
+    renderer.domElement.style.cursor=pickFocusMode?'crosshair':'';
+  };
+  save.onclick=()=>{
+    savedView=captureView();
+    homeTarget.copy(savedView.focus);
+    homePosition.copy(savedView.cameraPosition);
+    camera.up.copy(savedView.cameraUp).normalize();
+    save.textContent='VIEW SAVED';setTimeout(()=>save.textContent='SAVE VIEW',1000);
+    updateFocusMarker(homeTarget);
+  };
+  copy.onclick=async()=>{
+    const text=viewConfigText();
+    try{await navigator.clipboard.writeText(text);copy.textContent='COPIED';setTimeout(()=>copy.textContent='COPY CONFIG',1000)}catch{prompt('貼到 config.json：',text)}
+  };
+  download.onclick=()=>{
+    const merged={...(currentConfig||{}),...viewConfigObject()};
+    const blob=new Blob([JSON.stringify(merged,null,2)+'\n'],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${currentConfig?.id||'scene'}-config.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+  actions.append(pick,save,copy,download);
+  debugBody=document.createElement('div');
+  debugPanel.append(head,actions,debugBody);document.body.appendChild(debugPanel);
 
   const show=document.createElement('button');
-  show.id='debugShowBtn';show.textContent='XYZ';show.title='顯示座標資訊';
+  show.id='debugShowBtn';show.textContent='XYZ';show.title='顯示視角校正';
   show.style.cssText='position:fixed;left:12px;bottom:12px;z-index:39;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(5,7,7,.72);color:#fff;padding:6px 9px;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer';
   show.onclick=()=>{debugVisible=true;debugPanel.hidden=false};document.body.appendChild(show);
 }
+function captureView(){return {focus:controls.target.clone(),cameraPosition:camera.position.clone(),cameraUp:camera.up.clone().normalize()}}
+function viewConfigObject(){const v=captureView(),a=x=>+x.toFixed(6);return {focus:[a(v.focus.x),a(v.focus.y),a(v.focus.z)],cameraPosition:[a(v.cameraPosition.x),a(v.cameraPosition.y),a(v.cameraPosition.z)],cameraUp:[a(v.cameraUp.x),a(v.cameraUp.y),a(v.cameraUp.z)]}}
+function viewConfigText(){const v=viewConfigObject();return `"focus": ${JSON.stringify(v.focus)},\n"cameraPosition": ${JSON.stringify(v.cameraPosition)},\n"cameraUp": ${JSON.stringify(v.cameraUp)}`}
+function updateFocusMarker(position){
+  if(!focusMarker){
+    const geo=new THREE.SphereGeometry(1,12,8);
+    const mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.75,depthTest:false});
+    focusMarker=new THREE.Mesh(geo,mat);focusMarker.renderOrder=999;scene.add(focusMarker);
+  }
+  focusMarker.position.copy(position);focusMarker.scale.setScalar(Math.max(cloudRadius*.008,.002));focusMarker.visible=true;
+}
+function pickFocusFromPointer(event){
+  if(!pickFocusMode||!currentPoints)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  pointer.x=((event.clientX-rect.left)/rect.width)*2-1;
+  pointer.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  raycaster.params.Points.threshold=Math.max(cloudRadius*.012,.002);
+  const hit=raycaster.intersectObject(currentPoints,false)[0];
+  if(!hit)return;
+  controls.target.copy(hit.point);controls.update();updateFocusMarker(hit.point);
+  pickFocusMode=false;renderer.domElement.style.cursor='';
+  const btn=[...debugPanel.querySelectorAll('button')].find(b=>b.textContent.includes('CLICK A POINT'));
+  if(btn){btn.textContent='PICK FOCUS';btn.style.background='rgba(255,255,255,.035)'}
+}
+renderer.domElement.addEventListener('pointerdown',pickFocusFromPointer);
 function updateDebugPanel(){
   if(!debugBody||!debugVisible)return;
   const f=v=>`${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)}`;
@@ -70,96 +127,63 @@ function updateDebugPanel(){
   debugBody.textContent=[
     `scene          ${currentConfig?.id||'-'}`,
     `camera         ${f(camera.position)}`,
-    `orbit target   ${f(controls.target)}`,
+    `focus/target   ${f(controls.target)}`,
+    `camera up      ${f(camera.up)}`,
     `cloud object   ${f(cloud)}`,
     `mean center    ${f(lastGeometryCenter)}`,
     `bbox center    ${f(lastBoundingCenter)}`,
     `distance       ${distance.toFixed(4)}`,
     `radius         ${cloudRadius.toFixed(4)}`,
-    `config hint    \"viewTarget\": [${controls.target.x.toFixed(4)}, ${controls.target.y.toFixed(4)}, ${controls.target.z.toFixed(4)}]`
+    `pick mode      ${pickFocusMode?'ON':'OFF'}`
   ].join('\n');
 }
 ensureDebugPanel();
 
 function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));button.classList.toggle('is-active',on)}
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
+function vec3FromConfig(value,fallback){
+  return Array.isArray(value)&&value.length>=3
+    ? new THREE.Vector3(Number(value[0])||0,Number(value[1])||0,Number(value[2])||0)
+    : fallback.clone();
+}
 function fit(points, config={}){
   const g=points.geometry;
   const position=g.getAttribute('position');
   if(!position||position.count===0)return;
 
-  // 使用所有點的平均中心，而不是外框中心。
-  // 對不對稱、帶有少量離群點的掃描，視覺上會更接近畫面中央。
-  const center=new THREE.Vector3();
-  for(let i=0;i<position.count;i++){
-    center.x+=position.getX(i);
-    center.y+=position.getY(i);
-    center.z+=position.getZ(i);
-  }
-  center.multiplyScalar(1/position.count);
-  lastGeometryCenter.copy(center);
-
-  // 可在 config.json 微調視覺中心，例如：[0.1, -0.05, 0]
-  const offset=Array.isArray(config.centerOffset)?config.centerOffset:[0,0,0];
-  center.x-=Number(offset[0]||0);
-  center.y-=Number(offset[1]||0);
-  center.z-=Number(offset[2]||0);
-
-  for(let i=0;i<position.count;i++){
-    position.setXYZ(i,
-      position.getX(i)-center.x,
-      position.getY(i)-center.y,
-      position.getZ(i)-center.z
-    );
-  }
-  position.needsUpdate=true;
-
-  points.position.set(0,0,0);
-  points.rotation.set(0,0,0);
-  points.scale.set(1,1,1);
+  // 保留 V8 的外框置中方式：先將幾何中心移到世界原點。
   g.computeBoundingBox();
-  g.computeBoundingSphere();
-  if(g.boundingBox)g.boundingBox.getCenter(lastBoundingCenter);
+  const bboxCenter=new THREE.Vector3(),size=new THREE.Vector3();
+  g.boundingBox.getCenter(bboxCenter);g.boundingBox.getSize(size);
+  lastBoundingCenter.copy(bboxCenter);
 
-  // 再以 bounding sphere 的殘留中心做一次校正，避免浮點誤差。
-  const residual=g.boundingSphere?.center?.clone()||new THREE.Vector3();
-  if(residual.lengthSq()>1e-12){
-    for(let i=0;i<position.count;i++){
-      position.setXYZ(i,
-        position.getX(i)-residual.x,
-        position.getY(i)-residual.y,
-        position.getZ(i)-residual.z
-      );
-    }
-    position.needsUpdate=true;
-    g.computeBoundingBox();
-    g.computeBoundingSphere();
-  }
+  const mean=new THREE.Vector3();
+  for(let i=0;i<position.count;i++)mean.add(new THREE.Vector3(position.getX(i),position.getY(i),position.getZ(i)));
+  mean.multiplyScalar(1/position.count);lastGeometryCenter.copy(mean);
 
-  cloudRadius=Math.max(g.boundingSphere?.radius||0,0.0001);
-  uniforms.uScale.value=3.2/cloudRadius;
-  uniforms.uRadius.value=cloudRadius;
+  g.translate(-bboxCenter.x,-bboxCenter.y,-bboxCenter.z);
+  g.computeBoundingBox();g.computeBoundingSphere();
+  points.position.set(0,0,0);points.rotation.set(0,0,0);points.scale.set(1,1,1);
 
-  const target=Array.isArray(config.viewTarget)?config.viewTarget:[0,0,0];
-  homeTarget.set(Number(target[0]||0),Number(target[1]||0),Number(target[2]||0));
+  cloudRadius=Math.max(g.boundingSphere?.radius||Math.max(size.x,size.y,size.z)*.5,0.0001);
+  uniforms.uScale.value=3.2/cloudRadius;uniforms.uRadius.value=cloudRadius;
+
+  const defaultTarget=new THREE.Vector3(0,0,0);
+  const focus=vec3FromConfig(config.focus||config.viewTarget,defaultTarget);
+  homeTarget.copy(focus);
+
   const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
   const distance=(cloudRadius/Math.sin(halfFov))*1.12;
+  const defaultCamera=focus.clone().add(new THREE.Vector3(distance*.16,distance*.06,distance));
+  homePosition.copy(vec3FromConfig(config.cameraPosition,defaultCamera));
+  camera.up.copy(vec3FromConfig(config.cameraUp,new THREE.Vector3(0,1,0))).normalize();
 
-  // 攝影機位置必須以 viewTarget 為基準偏移。
-  // 舊版使用絕對座標，當 viewTarget 不為 0 時，攝影機會看向錯誤位置。
-  homePosition.copy(homeTarget).add(
-    new THREE.Vector3(distance*.16,distance*.06,distance)
-  );
-
-  camera.near=Math.max(cloudRadius/5000,0.001);
-  camera.far=Math.max(cloudRadius*50,1000);
-  camera.updateProjectionMatrix();
-  controls.minDistance=Math.max(cloudRadius*.08,0.001);
-  controls.maxDistance=Math.max(cloudRadius*25,10);
-  controls.target.copy(homeTarget);
-  reset(false);
+  camera.near=Math.max(cloudRadius/5000,0.001);camera.far=Math.max(cloudRadius*50,1000);camera.updateProjectionMatrix();
+  controls.minDistance=Math.max(cloudRadius*.08,0.001);controls.maxDistance=Math.max(cloudRadius*25,10);
+  controls.target.copy(homeTarget);camera.position.copy(homePosition);camera.lookAt(homeTarget);controls.update();
+  savedView=captureView();updateFocusMarker(homeTarget);
 }
-function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
+function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);camera.lookAt(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
 function showLoading(text='載入作品…'){loading.classList.remove('hide');loadingText.textContent=text;loadingProgress.value=0;errorBox.hidden=true}
 function fail(m){loading.classList.add('hide');errorBox.hidden=false;errorBox.textContent=m}
 function applyConfig(c){currentConfig=c;document.title=`Point Cloud Sound Book — ${c.title}`;$('#sceneTitle').textContent=c.title||c.id;$('#sceneGps').textContent=c.gps||'';$('#sceneDate').textContent=c.date||'';$('#sceneLabel').textContent=c.sceneLabel||c.id;$('#sceneSubtitle').textContent=c.subtitle||'';setRange(pointSize,pointSizeValue,uniforms.uPointSize,c.pointSize??.005,3);setRange(brightness,brightnessValue,uniforms.uBrightness,c.brightness??1,2);setRange(globalWave,globalWaveValue,uniforms.uGlobalWave,c.globalWave??1.8,2);setRange(localWave,localWaveValue,uniforms.uLocalWave,c.localWave??2.2,2);setRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,c.motionSpeed??.55,2);setRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,c.audioInfluence??1.35,2);setRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,c.fireflyAmount??.45,2);setRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,c.fireflyRange??1.2,2);controls.autoRotate=c.autoRotate!==false;motionTarget=c.motionEnabled===false?0:1;syncToggle(rotateBtn,controls.autoRotate);syncToggle(waveBtn,motionTarget>0);audio.pause();audio.innerHTML='';if(c.sound){const src=document.createElement('source');src.src=c.sound;src.type=c.soundType||'';audio.appendChild(src);audio.load()}setAudioUI()}
