@@ -1,19 +1,13 @@
-V9.8 手動中心修正版
+覆蓋 GitHub 根目錄的 viewer.js。
 
-1. 將本 ZIP 內的 viewer.js 覆蓋 GitHub 根目錄原本的 viewer.js。
-2. 在每個場景的 config.json 加入：
+新增：
+- ROLL − / ROLL +：每次調整 1 度水平傾斜
+- LEVEL：依世界 Y 軸重新校正水平
+- GLOW：點雲柔光強度
+- RADIUS：柔光擴散範圍
+- COPY CONFIG / DOWNLOAD JSON 會包含 cameraUp、glowStrength、glowRadius
 
-"viewTarget": [4.409884, -0.530158, 5.021313]
-
-注意 JSON 前後欄位之間要有逗號。
-
-範例：
-{
-  "id": "flower",
-  "title": "Flower",
-  "model": "./scenes/flower/model.ply",
-  "sound": "./scenes/flower/sound.mp3",
-  "viewTarget": [4.409884, -0.530158, 5.021313]
-}
-
-這版修正重點：攝影機初始位置會跟著 viewTarget 一起位移，Reset 與場景切換也會使用各場景自己的中心。
+config.json 可加入：
+"cameraUp": [0, 1, 0],
+"glowStrength": 0.35,
+"glowRadius": 0.45
