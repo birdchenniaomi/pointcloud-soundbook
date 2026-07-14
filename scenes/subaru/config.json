@@ -3,7 +3,7 @@
   "title": "subaru",
   "sceneLabel": "scene 02",
   "subtitle": "point cloud · soundscape",
-  "gps": "123 123",
+  "gps": "22.976997, 120.216012",
   "date": "2026年7月",
   "model": "./scenes/subaru/model.ply",
   "sound": "./scenes/subaru/sound.mp3",
