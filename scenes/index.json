@@ -4,6 +4,10 @@
     {
       "id": "flower",
       "config": "./scenes/flower/config.json"
+    },
+    {
+      "id": "subaru",
+      "config": "./scenes/subaru/config.json"
     }
   ]
 }
