@@ -1,0 +1,9 @@
+{
+  "defaultScene": "flower",
+  "scenes": [
+    {
+      "id": "flower",
+      "config": "./scenes/flower/config.json"
+    }
+  ]
+}

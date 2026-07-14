@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#070808" />
-  <title>Point Cloud Sound Book — Flower V8</title>
+  <title>Point Cloud Sound Book</title>
   <link rel="stylesheet" href="./style.css" />
   <script type="importmap">
   {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
@@ -15,21 +15,28 @@
     <div id="viewer" aria-label="3D 點雲瀏覽器"></div>
 
     <header class="meta">
-      <h1>flower</h1>
-      <p>22.986578, 120.221494</p>
-      <p>2022年10月</p>
+      <button id="sceneMenuBtn" class="title-button" type="button" aria-expanded="false">
+        <h1 id="sceneTitle">loading</h1>
+      </button>
+      <p id="sceneGps"></p>
+      <p id="sceneDate"></p>
     </header>
+
+    <aside id="sceneDrawer" class="scene-drawer" hidden>
+      <div class="drawer-head"><span>scenes</span><button id="sceneCloseBtn" type="button">×</button></div>
+      <div id="sceneList" class="scene-list"></div>
+    </aside>
 
     <button id="settingsBtn" class="quiet-button settings-button" type="button" aria-expanded="false" title="顯示設定">···</button>
     <section id="settings" class="settings" hidden>
-      <label><span>point</span><output id="pointSizeValue">0.005</output><input id="pointSize" type="range" min="0.005" max="0.12" value="0.005" step="0.005"></label>
+      <label><span>point</span><output id="pointSizeValue">0.005</output><input id="pointSize" type="range" min="0.002" max="0.12" value="0.005" step="0.001"></label>
       <label><span>light</span><output id="brightnessValue">1.00</output><input id="brightness" type="range" min="0.25" max="2.5" value="1" step="0.05"></label>
-      <label><span>global wave</span><output id="globalWaveValue">1.80</output><input id="globalWave" type="range" min="0" max="8" value="1.8" step="0.05"></label>
-      <label><span>local drift</span><output id="localWaveValue">2.20</output><input id="localWave" type="range" min="0" max="10" value="2.2" step="0.05"></label>
+      <label><span>global wave</span><output id="globalWaveValue">1.80</output><input id="globalWave" type="range" min="0" max="12" value="1.8" step="0.05"></label>
+      <label><span>local drift</span><output id="localWaveValue">2.20</output><input id="localWave" type="range" min="0" max="15" value="2.2" step="0.05"></label>
       <label><span>motion speed</span><output id="motionSpeedValue">0.55</output><input id="motionSpeed" type="range" min="0.05" max="2" value="0.55" step="0.05"></label>
-      <label><span>audio influence</span><output id="audioInfluenceValue">1.35</output><input id="audioInfluence" type="range" min="0" max="5" value="1.35" step="0.05"></label>
-      <label><span>firefly amount</span><output id="fireflyAmountValue">0.45</output><input id="fireflyAmount" type="range" min="0" max="2" value="0.45" step="0.05"></label>
-      <label><span>firefly range</span><output id="fireflyRangeValue">1.20</output><input id="fireflyRange" type="range" min="0" max="5" value="1.2" step="0.05"></label>
+      <label><span>audio influence</span><output id="audioInfluenceValue">1.35</output><input id="audioInfluence" type="range" min="0" max="8" value="1.35" step="0.05"></label>
+      <label><span>firefly amount</span><output id="fireflyAmountValue">0.45</output><input id="fireflyAmount" type="range" min="0" max="3" value="0.45" step="0.05"></label>
+      <label><span>firefly range</span><output id="fireflyRangeValue">1.20</output><input id="fireflyRange" type="range" min="0" max="8" value="1.2" step="0.05"></label>
     </section>
 
     <nav class="actions" aria-label="觀看控制">
@@ -40,13 +47,15 @@
     </nav>
 
     <footer class="footer">
-      <div><b>scene 01</b><span>point cloud · soundscape</span></div>
+      <button id="prevSceneBtn" class="scene-step" type="button" aria-label="上一個作品">‹</button>
+      <div class="scene-caption"><b id="sceneLabel">scene</b><span id="sceneSubtitle">point cloud · soundscape</span></div>
       <button id="audioBtn" type="button" aria-pressed="false"><span id="audioIcon">▶</span><span id="audioLabel">listen</span></button>
+      <button id="nextSceneBtn" class="scene-step" type="button" aria-label="下一個作品">›</button>
     </footer>
 
-    <div id="loading" class="loading" role="status"><i></i><p id="loadingText">載入點雲…</p><progress id="loadingProgress" value="0" max="100"></progress></div>
+    <div id="loading" class="loading" role="status"><i></i><p id="loadingText">載入作品…</p><progress id="loadingProgress" value="0" max="100"></progress></div>
     <div id="errorBox" class="error" hidden></div>
-    <audio id="soundtrack" preload="metadata" loop><source src="./assets/sound.wav" type="audio/wav"></audio>
+    <audio id="soundtrack" preload="metadata" loop></audio>
   </main>
   <script type="module" src="./viewer.js"></script>
 </body>

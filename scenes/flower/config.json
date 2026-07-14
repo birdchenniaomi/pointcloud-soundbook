@@ -1,0 +1,21 @@
+{
+  "id": "flower",
+  "title": "flower",
+  "sceneLabel": "scene 01",
+  "subtitle": "point cloud · soundscape",
+  "gps": "22.986578, 120.221494",
+  "date": "2022年10月",
+  "model": "./scenes/flower/model.ply",
+  "sound": "./scenes/flower/sound.wav",
+  "soundType": "audio/wav",
+  "pointSize": 0.005,
+  "brightness": 1.0,
+  "globalWave": 1.8,
+  "localWave": 2.2,
+  "motionSpeed": 0.55,
+  "audioInfluence": 1.35,
+  "fireflyAmount": 0.45,
+  "fireflyRange": 1.2,
+  "autoRotate": true,
+  "motionEnabled": true
+}

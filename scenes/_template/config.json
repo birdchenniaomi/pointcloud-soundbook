@@ -1,0 +1,21 @@
+{
+  "id": "scene02",
+  "title": "new scene",
+  "sceneLabel": "scene 02",
+  "subtitle": "point cloud · soundscape",
+  "gps": "",
+  "date": "2026年7月",
+  "model": "./scenes/scene02/model.ply",
+  "sound": "./scenes/scene02/sound.mp3",
+  "soundType": "audio/mpeg",
+  "pointSize": 0.005,
+  "brightness": 1.0,
+  "globalWave": 1.8,
+  "localWave": 2.2,
+  "motionSpeed": 0.55,
+  "audioInfluence": 1.35,
+  "fireflyAmount": 0.45,
+  "fireflyRange": 1.2,
+  "autoRotate": true,
+  "motionEnabled": true
+}
