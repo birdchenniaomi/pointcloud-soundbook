@@ -37,69 +37,36 @@ function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));bu
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
 function fit(points, config={}){
   const g=points.geometry;
-  const position=g.getAttribute('position');
-  if(!position||position.count===0)return;
+  g.computeBoundingBox();
 
-  // 使用所有點的平均中心，而不是外框中心。
-  // 對不對稱、帶有少量離群點的掃描，視覺上會更接近畫面中央。
   const center=new THREE.Vector3();
-  for(let i=0;i<position.count;i++){
-    center.x+=position.getX(i);
-    center.y+=position.getY(i);
-    center.z+=position.getZ(i);
-  }
-  center.multiplyScalar(1/position.count);
+  const size=new THREE.Vector3();
+  g.boundingBox.getCenter(center);
+  g.boundingBox.getSize(size);
 
-  // 可在 config.json 微調視覺中心，例如：[0.1, -0.05, 0]
-  const offset=Array.isArray(config.centerOffset)?config.centerOffset:[0,0,0];
-  center.x-=Number(offset[0]||0);
-  center.y-=Number(offset[1]||0);
-  center.z-=Number(offset[2]||0);
-
-  for(let i=0;i<position.count;i++){
-    position.setXYZ(i,
-      position.getX(i)-center.x,
-      position.getY(i)-center.y,
-      position.getZ(i)-center.z
-    );
-  }
-  position.needsUpdate=true;
+  // 沿用 V8 的置中方式：以 Bounding Box 中心平移幾何。
+  g.translate(-center.x,-center.y,-center.z);
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
 
   points.position.set(0,0,0);
   points.rotation.set(0,0,0);
   points.scale.set(1,1,1);
-  g.computeBoundingBox();
-  g.computeBoundingSphere();
 
-  // 再以 bounding sphere 的殘留中心做一次校正，避免浮點誤差。
-  const residual=g.boundingSphere?.center?.clone()||new THREE.Vector3();
-  if(residual.lengthSq()>1e-12){
-    for(let i=0;i<position.count;i++){
-      position.setXYZ(i,
-        position.getX(i)-residual.x,
-        position.getY(i)-residual.y,
-        position.getZ(i)-residual.z
-      );
-    }
-    position.needsUpdate=true;
-    g.computeBoundingBox();
-    g.computeBoundingSphere();
-  }
-
-  cloudRadius=Math.max(g.boundingSphere?.radius||0,0.0001);
+  cloudRadius=Math.max(size.x,size.y,size.z)*.5||1;
   uniforms.uScale.value=3.2/cloudRadius;
   uniforms.uRadius.value=cloudRadius;
 
   homeTarget.set(0,0,0);
-  const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
-  const distance=(cloudRadius/Math.sin(halfFov))*1.12;
-  homePosition.set(distance*.16,distance*.06,distance);
+  const distance=cloudRadius/Math.tan(THREE.MathUtils.degToRad(camera.fov*.5));
+  homePosition.set(distance*.28,distance*.10,distance*1.15);
 
-  camera.near=Math.max(cloudRadius/5000,0.001);
-  camera.far=Math.max(cloudRadius*50,1000);
+  camera.near=Math.max(cloudRadius/10000,.001);
+  camera.far=Math.max(cloudRadius*100,1000);
   camera.updateProjectionMatrix();
-  controls.minDistance=Math.max(cloudRadius*.08,0.001);
-  controls.maxDistance=Math.max(cloudRadius*25,10);
+
+  controls.minDistance=cloudRadius*.05;
+  controls.maxDistance=cloudRadius*20;
   controls.target.copy(homeTarget);
   reset(false);
 }
