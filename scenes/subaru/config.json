@@ -8,11 +8,23 @@
   "model": "./scenes/subaru/model.ply",
   "sound": "./scenes/subaru/sound.mp3",
   "soundType": "audio/mpeg",
-  "focus": [2.21616,-4.206569,3.946493],
-  "cameraPosition": [-2.581652,0.847491,18.757148],
-  "cameraUp": [0,1,0],
+  "focus": [
+    3.22896,
+    -4.762233,
+    -0.274498
+  ],
+  "cameraPosition": [
+    -2.429516,
+    -2.883835,
+    18.201884
+  ],
+  "cameraUp": [
+    -0.042275,
+    0.992875,
+    0.111406
+  ],
   "pointSize": 0.08,
-  "brightness": 1.0,
+  "brightness": 1,
   "globalWave": 1.8,
   "localWave": 2.2,
   "motionSpeed": 0.55,
@@ -20,5 +32,7 @@
   "fireflyAmount": 0.45,
   "fireflyRange": 1.2,
   "autoRotate": true,
-  "motionEnabled": true
+  "motionEnabled": true,
+  "glowStrength": 0.35,
+  "glowRadius": 0.45
 }
