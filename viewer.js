@@ -144,7 +144,12 @@ function fit(points, config={}){
   homeTarget.set(Number(target[0]||0),Number(target[1]||0),Number(target[2]||0));
   const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
   const distance=(cloudRadius/Math.sin(halfFov))*1.12;
-  homePosition.set(distance*.16,distance*.06,distance);
+
+  // 攝影機位置必須以 viewTarget 為基準偏移。
+  // 舊版使用絕對座標，當 viewTarget 不為 0 時，攝影機會看向錯誤位置。
+  homePosition.copy(homeTarget).add(
+    new THREE.Vector3(distance*.16,distance*.06,distance)
+  );
 
   camera.near=Math.max(cloudRadius/5000,0.001);
   camera.far=Math.max(cloudRadius*50,1000);

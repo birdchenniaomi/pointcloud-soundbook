@@ -1,16 +1,19 @@
-覆蓋 GitHub 根目錄原本的 viewer.js。
+V9.8 手動中心修正版
 
-畫面左下會顯示：
-- camera
-- orbit target
-- cloud object
-- mean center
-- bbox center
-- distance
-- radius
+1. 將本 ZIP 內的 viewer.js 覆蓋 GitHub 根目錄原本的 viewer.js。
+2. 在每個場景的 config.json 加入：
 
-手動平移到理想中心後，按 COPY JSON，將複製的 viewTarget 貼到該場景 config.json，例如：
+"viewTarget": [4.409884, -0.530158, 5.021313]
 
-"viewTarget": [0.123456, -0.045678, 0.000000]
+注意 JSON 前後欄位之間要有逗號。
 
-請注意 JSON 前一行結尾要有逗號，最後一行不可多逗號。
+範例：
+{
+  "id": "flower",
+  "title": "Flower",
+  "model": "./scenes/flower/model.ply",
+  "sound": "./scenes/flower/sound.mp3",
+  "viewTarget": [4.409884, -0.530158, 5.021313]
+}
+
+這版修正重點：攝影機初始位置會跟著 viewTarget 一起位移，Reset 與場景切換也會使用各場景自己的中心。
