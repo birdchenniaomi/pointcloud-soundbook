@@ -13,6 +13,9 @@ const audio=$('#soundtrack'),audioBtn=$('#audioBtn'),audioIcon=$('#audioIcon'),a
 const sceneMenuBtn=$('#sceneMenuBtn'),sceneDrawer=$('#sceneDrawer'),sceneCloseBtn=$('#sceneCloseBtn'),sceneList=$('#sceneList');
 const prevSceneBtn=$('#prevSceneBtn'),nextSceneBtn=$('#nextSceneBtn');
 
+let debugPanel=null,debugBody=null,debugVisible=true;
+let lastGeometryCenter=new THREE.Vector3(),lastBoundingCenter=new THREE.Vector3();
+
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x070808); scene.fog=new THREE.FogExp2(0x070808,.011);
 const camera=new THREE.PerspectiveCamera(45,1,.01,5000);
@@ -33,136 +36,123 @@ float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453123
 void main(){vColor=color;vec3 p=position;float seed=hash(position*31.73);float selectThreshold=1.0-clamp(uFireflyAmount,0.0,3.0)*0.004;vFirefly=step(selectThreshold,seed);float t=uTime*uMotionSpeed;vec3 q=p*uScale;float largeA=fbm(q*.20+vec3(t*.055,t*.018,-t*.030))-.5;float largeB=fbm(q*.23+vec3(-t*.028,t*.042,t*.016)+vec3(12.7,3.4,8.8))-.5;float localA=fbm(q*.72+vec3(t*.090,-t*.040,t*.050)+vec3(2.1,17.3,5.6))-.5;float localB=fbm(q*1.18+vec3(-t*.075,t*.065,-t*.035)+vec3(20.4,7.1,13.2))-.5;float audioSlow=(uBass*.60+uMid*.28+uHigh*.12)*uAudioInfluence;float globalAmp=uRadius*(.0018*uGlobalWave)*(1.0+audioSlow*.75);float localAmp=uRadius*(.00075*uLocalWave)*(1.0+audioSlow*1.15);vec3 flow=normalize(vec3(largeB*.8,largeA*.35,largeA*.55)+vec3(.001));vec3 globalOffset=flow*largeA*globalAmp;vec3 localDir=normalize(vec3(localB,localA*.9,localA-localB)+vec3(.001));vec3 localOffset=localDir*mix(localA,localB,.5)*localAmp;float radial=length(q.xz);float pulse=sin(radial*1.25-t*(.28+uBass*.35));pulse=smoothstep(.42,1.0,pulse*.5+.5)*uEnvelope;vec3 pulseOffset=normalize(vec3(q.x,.22,q.z)+vec3(.001))*pulse*uRadius*.0017*uAudioInfluence;vec3 fireflyOffset=vec3(0.);if(vFirefly>.5){float phase=hash(position*17.19+vec3(2.4,8.1,5.7))*6.2831853;float speed=.22+hash(position*9.41+vec3(4.1,1.8,7.3))*.38;float orbit=uRadius*.0015*uFireflyRange;float nx=fbm(q*.38+vec3(t*.12+phase,phase*.2,-t*.08))-.5;float ny=fbm(q*.41+vec3(-t*.09,phase*.3,t*.11+phase))-.5;float nz=fbm(q*.36+vec3(t*.07,-t*.10+phase,phase*.4))-.5;fireflyOffset=vec3(sin(t*speed+phase)+nx*.9,cos(t*(speed*.73)+phase*1.37)+ny*.8,sin(t*(speed*.57)+phase*2.11)+nz*.9)*orbit;}p+=(globalOffset+localOffset+pulseOffset+fireflyOffset)*uMotion;vec4 mv=modelViewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;gl_PointSize=uPointSize*(320.0/max(1.0,-mv.z))*(1.0+vFirefly*1.8);}
 `,fragmentShader:`uniform float uBrightness,uHigh;varying vec3 vColor;varying float vFirefly;void main(){vec2 uv=gl_PointCoord-.5;float d=dot(uv,uv);if(d>.25)discard;float edge=smoothstep(.25,.07,d);vec3 c=min(vColor*(uBrightness+uHigh*.18),vec3(1.));c=mix(c,min(c*1.45+vec3(.12,.10,.05),vec3(1.)),vFirefly);gl_FragColor=vec4(c,edge*(1.0+vFirefly*.35));}`});
 
+function ensureDebugPanel(){
+  if(debugPanel)return;
+  debugPanel=document.createElement('section');
+  debugPanel.id='debugCoordinates';
+  debugPanel.style.cssText=`position:fixed;left:12px;bottom:12px;z-index:40;max-width:min(92vw,430px);padding:10px 12px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(5,7,7,.78);backdrop-filter:blur(10px);color:rgba(255,255,255,.86);font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em;white-space:pre;pointer-events:auto`;
+  const head=document.createElement('div');
+  head.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;color:#fff';
+  const title=document.createElement('span'); title.textContent='COORDINATES';
+  const actions=document.createElement('div'); actions.style.cssText='display:flex;gap:6px';
+  const copy=document.createElement('button'); copy.textContent='COPY JSON';
+  const hide=document.createElement('button'); hide.textContent='HIDE';
+  for(const b of [copy,hide])b.style.cssText='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:transparent;color:inherit;padding:3px 7px;font:inherit;cursor:pointer';
+  debugBody=document.createElement('div');
+  copy.onclick=async()=>{
+    const t=controls.target;
+    const text=`\"viewTarget\": [${t.x.toFixed(6)}, ${t.y.toFixed(6)}, ${t.z.toFixed(6)}]`;
+    try{await navigator.clipboard.writeText(text);copy.textContent='COPIED';setTimeout(()=>copy.textContent='COPY JSON',1000)}catch{prompt('複製到 config.json：',text)}
+  };
+  hide.onclick=()=>{debugVisible=false;debugPanel.hidden=true};
+  actions.append(copy,hide);head.append(title,actions);debugPanel.append(head,debugBody);document.body.appendChild(debugPanel);
+
+  const show=document.createElement('button');
+  show.id='debugShowBtn';show.textContent='XYZ';show.title='顯示座標資訊';
+  show.style.cssText='position:fixed;left:12px;bottom:12px;z-index:39;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(5,7,7,.72);color:#fff;padding:6px 9px;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer';
+  show.onclick=()=>{debugVisible=true;debugPanel.hidden=false};document.body.appendChild(show);
+}
+function updateDebugPanel(){
+  if(!debugBody||!debugVisible)return;
+  const f=v=>`${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)}`;
+  const cloud=currentPoints?.position||new THREE.Vector3();
+  const distance=camera.position.distanceTo(controls.target);
+  debugBody.textContent=[
+    `scene          ${currentConfig?.id||'-'}`,
+    `camera         ${f(camera.position)}`,
+    `orbit target   ${f(controls.target)}`,
+    `cloud object   ${f(cloud)}`,
+    `mean center    ${f(lastGeometryCenter)}`,
+    `bbox center    ${f(lastBoundingCenter)}`,
+    `distance       ${distance.toFixed(4)}`,
+    `radius         ${cloudRadius.toFixed(4)}`,
+    `config hint    \"viewTarget\": [${controls.target.x.toFixed(4)}, ${controls.target.y.toFixed(4)}, ${controls.target.z.toFixed(4)}]`
+  ].join('\n');
+}
+ensureDebugPanel();
+
 function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));button.classList.toggle('is-active',on)}
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
-let centerMode='bbox';
+function fit(points, config={}){
+  const g=points.geometry;
+  const position=g.getAttribute('position');
+  if(!position||position.count===0)return;
 
-function restoreOriginalPositions(geometry){
-  const position=geometry.getAttribute('position');
-  if(!position)return null;
-  if(!geometry.userData.originalPositions){
-    geometry.userData.originalPositions=new Float32Array(position.array);
-  }else{
-    position.array.set(geometry.userData.originalPositions);
-    position.needsUpdate=true;
-  }
-  return position;
-}
-
-function computeBBoxCenter(geometry){
-  geometry.computeBoundingBox();
-  return geometry.boundingBox.getCenter(new THREE.Vector3());
-}
-
-function computeMeanCenter(position){
+  // 使用所有點的平均中心，而不是外框中心。
+  // 對不對稱、帶有少量離群點的掃描，視覺上會更接近畫面中央。
   const center=new THREE.Vector3();
   for(let i=0;i<position.count;i++){
     center.x+=position.getX(i);
     center.y+=position.getY(i);
     center.z+=position.getZ(i);
   }
-  return center.multiplyScalar(1/Math.max(1,position.count));
-}
+  center.multiplyScalar(1/position.count);
+  lastGeometryCenter.copy(center);
 
-// 以體素密度尋找主要點群中心，減少孤立雜點或長尾掃描對中心的影響。
-function computeDensityCenter(geometry,position){
-  geometry.computeBoundingBox();
-  const box=geometry.boundingBox;
-  const size=box.getSize(new THREE.Vector3());
-  const grid=24;
-  const counts=new Uint32Array(grid*grid*grid);
-  const step=Math.max(1,Math.floor(position.count/120000));
-  const ix=(v,min,range)=>Math.min(grid-1,Math.max(0,Math.floor(((v-min)/(range||1))*grid)));
-  for(let i=0;i<position.count;i+=step){
-    const x=ix(position.getX(i),box.min.x,size.x);
-    const y=ix(position.getY(i),box.min.y,size.y);
-    const z=ix(position.getZ(i),box.min.z,size.z);
-    counts[x+grid*(y+grid*z)]++;
-  }
-  let best=0,bestCount=0;
-  for(let i=0;i<counts.length;i++)if(counts[i]>bestCount){best=i;bestCount=counts[i]}
-  const bz=Math.floor(best/(grid*grid));
-  const rem=best-bz*grid*grid;
-  const by=Math.floor(rem/grid), bx=rem-by*grid;
-
-  const center=new THREE.Vector3();
-  let total=0;
-  // 取最密體素及周圍一圈，避免中心落在單一細小表面。
-  for(let i=0;i<position.count;i+=step){
-    const x=ix(position.getX(i),box.min.x,size.x);
-    const y=ix(position.getY(i),box.min.y,size.y);
-    const z=ix(position.getZ(i),box.min.z,size.z);
-    if(Math.abs(x-bx)<=1&&Math.abs(y-by)<=1&&Math.abs(z-bz)<=1){
-      center.x+=position.getX(i);
-      center.y+=position.getY(i);
-      center.z+=position.getZ(i);
-      total++;
-    }
-  }
-  return total?center.multiplyScalar(1/total):computeMeanCenter(position);
-}
-
-function installCenterSelector(){
-  if(document.querySelector('#centerMode'))return;
-  const host=settings||document.body;
-  const row=document.createElement('label');
-  row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.62);margin-top:10px;';
-  row.innerHTML='<span>CENTER</span><select id="centerMode" style="max-width:145px;background:#0d0f0f;color:#ddd;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:5px 7px;font:inherit"><option value="bbox">外框中心</option><option value="mean">平均中心</option><option value="density">密度中心</option></select>';
-  host.appendChild(row);
-  const select=row.querySelector('select');
-  select.value=centerMode;
-  select.onchange=()=>{
-    centerMode=select.value;
-    if(currentPoints)fit(currentPoints,currentConfig||{});
-  };
-}
-
-function fit(points, config={}){
-  const g=points.geometry;
-  const position=restoreOriginalPositions(g);
-  if(!position||position.count===0)return;
-
-  const requested=config.centerMode||centerMode||'bbox';
-  centerMode=requested;
-  const selector=document.querySelector('#centerMode');
-  if(selector)selector.value=centerMode;
-
-  let center;
-  if(centerMode==='density')center=computeDensityCenter(g,position);
-  else if(centerMode==='mean')center=computeMeanCenter(position);
-  else center=computeBBoxCenter(g);
-
+  // 可在 config.json 微調視覺中心，例如：[0.1, -0.05, 0]
   const offset=Array.isArray(config.centerOffset)?config.centerOffset:[0,0,0];
   center.x-=Number(offset[0]||0);
   center.y-=Number(offset[1]||0);
   center.z-=Number(offset[2]||0);
-  g.translate(-center.x,-center.y,-center.z);
-  g.computeBoundingBox();
-  g.computeBoundingSphere();
+
+  for(let i=0;i<position.count;i++){
+    position.setXYZ(i,
+      position.getX(i)-center.x,
+      position.getY(i)-center.y,
+      position.getZ(i)-center.z
+    );
+  }
+  position.needsUpdate=true;
 
   points.position.set(0,0,0);
   points.rotation.set(0,0,0);
   points.scale.set(1,1,1);
-  points.updateMatrixWorld(true);
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  if(g.boundingBox)g.boundingBox.getCenter(lastBoundingCenter);
 
-  const size=g.boundingBox.getSize(new THREE.Vector3());
-  cloudRadius=Math.max(size.x,size.y,size.z)*.5||1;
+  // 再以 bounding sphere 的殘留中心做一次校正，避免浮點誤差。
+  const residual=g.boundingSphere?.center?.clone()||new THREE.Vector3();
+  if(residual.lengthSq()>1e-12){
+    for(let i=0;i<position.count;i++){
+      position.setXYZ(i,
+        position.getX(i)-residual.x,
+        position.getY(i)-residual.y,
+        position.getZ(i)-residual.z
+      );
+    }
+    position.needsUpdate=true;
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+  }
+
+  cloudRadius=Math.max(g.boundingSphere?.radius||0,0.0001);
   uniforms.uScale.value=3.2/cloudRadius;
   uniforms.uRadius.value=cloudRadius;
 
-  homeTarget.set(0,0,0);
-  const d=cloudRadius/Math.tan(THREE.MathUtils.degToRad(camera.fov*.5));
-  // 完全沿用 V8 的鏡頭構圖比例。
-  homePosition.set(d*.28,d*.10,d*1.15);
-  camera.near=Math.max(cloudRadius/10000,.001);
-  camera.far=Math.max(cloudRadius*100,1000);
+  const target=Array.isArray(config.viewTarget)?config.viewTarget:[0,0,0];
+  homeTarget.set(Number(target[0]||0),Number(target[1]||0),Number(target[2]||0));
+  const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
+  const distance=(cloudRadius/Math.sin(halfFov))*1.12;
+  homePosition.set(distance*.16,distance*.06,distance);
+
+  camera.near=Math.max(cloudRadius/5000,0.001);
+  camera.far=Math.max(cloudRadius*50,1000);
   camera.updateProjectionMatrix();
-  controls.minDistance=cloudRadius*.05;
-  controls.maxDistance=cloudRadius*20;
-  controls.target.set(0,0,0);
-  camera.position.copy(homePosition);
-  camera.lookAt(homeTarget);
-  controls.update();
+  controls.minDistance=Math.max(cloudRadius*.08,0.001);
+  controls.maxDistance=Math.max(cloudRadius*25,10);
+  controls.target.copy(homeTarget);
+  reset(false);
 }
 function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
 function showLoading(text='載入作品…'){loading.classList.remove('hide');loadingText.textContent=text;loadingProgress.value=0;errorBox.hidden=true}
@@ -178,4 +168,4 @@ bindRange(pointSize,pointSizeValue,uniforms.uPointSize,3);bindRange(brightness,b
 settingsBtn.onclick=()=>{settings.hidden=!settings.hidden;settingsBtn.setAttribute('aria-expanded',String(!settings.hidden))};sceneMenuBtn.onclick=()=>{sceneDrawer.hidden=!sceneDrawer.hidden;sceneMenuBtn.setAttribute('aria-expanded',String(!sceneDrawer.hidden))};sceneCloseBtn.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false')};prevSceneBtn.onclick=()=>loadScene(currentIndex-1);nextSceneBtn.onclick=()=>loadScene(currentIndex+1);resetBtn.onclick=()=>reset(true);waveBtn.onclick=()=>{const on=waveBtn.getAttribute('aria-pressed')!=='true';syncToggle(waveBtn,on);motionTarget=on?1:0};rotateBtn.onclick=()=>{controls.autoRotate=!controls.autoRotate;syncToggle(rotateBtn,controls.autoRotate)};fullscreenBtn.onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch(e){console.warn(e)}};
 let ctx=null,analyser=null,data=null,source=null;async function initAudio(){if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaElementSource(audio);analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.92;data=new Uint8Array(analyser.frequencyBinCount);source.connect(analyser);analyser.connect(ctx.destination)}if(ctx.state==='suspended')await ctx.resume()}function setAudioUI(){const p=!audio.paused;audioBtn.classList.toggle('is-playing',p);audioBtn.setAttribute('aria-pressed',String(p));audioIcon.textContent=p?'Ⅱ':'▶';audioLabel.textContent=p?'pause':'listen'}audioBtn.onclick=async()=>{try{await initAudio();audio.paused?await audio.play():audio.pause();setAudioUI()}catch(e){console.error(e);alert('音檔無法播放。')}};audio.onplay=setAudioUI;audio.onpause=setAudioUI;
 function bands(){const smooth=(c,t,a,r)=>THREE.MathUtils.lerp(c,t,t>c?a:r);if(!analyser||audio.paused){uniforms.uBass.value=smooth(uniforms.uBass.value,0,.02,.012);uniforms.uMid.value=smooth(uniforms.uMid.value,0,.018,.010);uniforms.uHigh.value=smooth(uniforms.uHigh.value,0,.014,.008);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,0,.018,.006);return}analyser.getByteFrequencyData(data);const avg=(a,b)=>{let s=0;for(let i=a;i<b;i++)s+=data[i];return s/(b-a)/255};const bass=avg(1,12),mid=avg(12,55),high=avg(55,150),env=Math.max(0,(bass*.65+mid*.28+high*.07)-.08);uniforms.uBass.value=smooth(uniforms.uBass.value,bass,.045,.010);uniforms.uMid.value=smooth(uniforms.uMid.value,mid,.032,.008);uniforms.uHigh.value=smooth(uniforms.uHigh.value,high,.022,.006);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,env,.028,.004)}
-controls.addEventListener('start',()=>{clearTimeout(resumeTimer);controls.autoRotate=false;syncToggle(rotateBtn,false)});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(currentConfig?.autoRotate!==false){controls.autoRotate=true;syncToggle(rotateBtn,true)}},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();renderer.setAnimationLoop(()=>{uniforms.uTime.value=clock.getElapsedTime();bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);controls.update();renderer.render(scene,camera)});installCenterSelector();initCatalog();
+controls.addEventListener('start',()=>{clearTimeout(resumeTimer);controls.autoRotate=false;syncToggle(rotateBtn,false)});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(currentConfig?.autoRotate!==false){controls.autoRotate=true;syncToggle(rotateBtn,true)}},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();renderer.setAnimationLoop(()=>{uniforms.uTime.value=clock.getElapsedTime();bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);controls.update();updateDebugPanel();renderer.render(scene,camera)});initCatalog();

@@ -1,0 +1,16 @@
+覆蓋 GitHub 根目錄原本的 viewer.js。
+
+畫面左下會顯示：
+- camera
+- orbit target
+- cloud object
+- mean center
+- bbox center
+- distance
+- radius
+
+手動平移到理想中心後，按 COPY JSON，將複製的 viewTarget 貼到該場景 config.json，例如：
+
+"viewTarget": [0.123456, -0.045678, 0.000000]
+
+請注意 JSON 前一行結尾要有逗號，最後一行不可多逗號。
