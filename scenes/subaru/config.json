@@ -33,6 +33,6 @@
   "fireflyRange": 1.2,
   "autoRotate": true,
   "motionEnabled": true,
-  "glowStrength": 0.35,
+  "glowStrength": 1.4,
   "glowRadius": 0.45
 }
