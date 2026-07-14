@@ -5,14 +5,26 @@
   "subtitle": "point cloud · soundscape",
   "gps": "22.986578, 120.221494",
   "date": "2022年10月",
-  "focus": [2.943225,-2.41594,1.352931],
-  "cameraPosition": [3.232265,0.253508,9.801766],
-  "cameraUp": [0,1,0],
+  "focus": [
+    3.716526,
+    -3.462458,
+    -0.802527
+  ],
+  "cameraPosition": [
+    5.269555,
+    2.412437,
+    11.236506
+  ],
+  "cameraUp": [
+    -0.054632,
+    0.997194,
+    -0.051184
+  ],
   "model": "./scenes/flower/model.ply",
   "sound": "./scenes/flower/sound.wav",
   "soundType": "audio/wav",
   "pointSize": 0.08,
-  "brightness": 1.0,
+  "brightness": 1,
   "globalWave": 1.8,
   "localWave": 2.2,
   "motionSpeed": 0.55,
@@ -20,5 +32,7 @@
   "fireflyAmount": 0.45,
   "fireflyRange": 1.2,
   "autoRotate": true,
-  "motionEnabled": true
+  "motionEnabled": true,
+  "glowStrength": 0.89,
+  "glowRadius": 0.23
 }
