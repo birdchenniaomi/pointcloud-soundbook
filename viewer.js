@@ -35,27 +35,29 @@ void main(){vColor=color;vec3 p=position;float seed=hash(position*31.73);float s
 
 function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));button.classList.toggle('is-active',on)}
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
+
 function fit(points, config={}){
   const g=points.geometry;
   const position=g.getAttribute('position');
   if(!position||position.count===0)return;
 
-  // 每個新場景只處理一次：以 Bounding Box 的真正中心移到原點。
-  // 不使用平均中心，也不做第二次殘留校正，避免不對稱點雲被推偏。
+  // 強制多次計算確保中心正確
   g.computeBoundingBox();
+  g.computeBoundingSphere();
+  
   const box=g.boundingBox;
   const center=new THREE.Vector3();
-  const size=new THREE.Vector3();
   box.getCenter(center);
-  box.getSize(size);
 
-  // 可選的人工微調，單位是原始 PLY 座標。
+  // 可選微調
   const offset=Array.isArray(config.centerOffset)?config.centerOffset:[0,0,0];
-  center.x-=Number(offset[0]||0);
-  center.y-=Number(offset[1]||0);
-  center.z-=Number(offset[2]||0);
+  center.x -= Number(offset[0]||0);
+  center.y -= Number(offset[1]||0);
+  center.z -= Number(offset[2]||0);
 
-  g.translate(-center.x,-center.y,-center.z);
+  g.translate(-center.x, -center.y, -center.z);
+  
+  // 再次驗證
   g.computeBoundingBox();
   g.computeBoundingSphere();
 
@@ -68,8 +70,7 @@ function fit(points, config={}){
   uniforms.uScale.value=3.2/cloudRadius;
   uniforms.uRadius.value=cloudRadius;
 
-  // 依目前瀏覽區長寬比同時計算水平與垂直所需距離。
-  // 相機固定在正前方，目標固定原點，確保畫面幾何中心就是螢幕中心。
+  // 相機距離計算
   const fittedSize=new THREE.Vector3();
   g.boundingBox.getSize(fittedSize);
   const vFov=THREE.MathUtils.degToRad(camera.fov);
@@ -77,31 +78,35 @@ function fit(points, config={}){
   const distanceV=(fittedSize.y*.5)/Math.tan(vFov*.5);
   const distanceH=(fittedSize.x*.5)/Math.tan(hFov*.5);
   const depth=fittedSize.z*.5;
-  const distance=(Math.max(distanceV,distanceH)+depth)*1.18;
+  const distance=(Math.max(distanceV,distanceH)+depth)*1.22;  // 微調
 
   homeTarget.set(0,0,0);
-  homePosition.set(0,0,Math.max(distance,cloudRadius*1.5));
+  homePosition.set(0,0,Math.max(distance,cloudRadius*1.6));
 
   camera.near=Math.max(cloudRadius/10000,0.001);
-  camera.far=Math.max(distance+cloudRadius*100,1000);
+  camera.far=Math.max(distance+cloudRadius*300,3000);
   camera.updateProjectionMatrix();
 
   controls.minDistance=Math.max(cloudRadius*.05,0.001);
-  controls.maxDistance=Math.max(cloudRadius*25,10);
-  controls.target.set(0,0,0);
+  controls.maxDistance=Math.max(cloudRadius*40,100);
+  controls.target.copy(homeTarget);
+
   camera.position.copy(homePosition);
   camera.up.set(0,1,0);
-  camera.lookAt(0,0,0);
+  camera.lookAt(homeTarget);
   camera.updateMatrixWorld(true);
   controls.update();
   controls.saveState();
+
+  renderer.render(scene, camera);
 }
+
 function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
 function showLoading(text='載入作品…'){loading.classList.remove('hide');loadingText.textContent=text;loadingProgress.value=0;errorBox.hidden=true}
 function fail(m){loading.classList.add('hide');errorBox.hidden=false;errorBox.textContent=m}
 function applyConfig(c){currentConfig=c;document.title=`Point Cloud Sound Book — ${c.title}`;$('#sceneTitle').textContent=c.title||c.id;$('#sceneGps').textContent=c.gps||'';$('#sceneDate').textContent=c.date||'';$('#sceneLabel').textContent=c.sceneLabel||c.id;$('#sceneSubtitle').textContent=c.subtitle||'';setRange(pointSize,pointSizeValue,uniforms.uPointSize,c.pointSize??.005,3);setRange(brightness,brightnessValue,uniforms.uBrightness,c.brightness??1,2);setRange(globalWave,globalWaveValue,uniforms.uGlobalWave,c.globalWave??1.8,2);setRange(localWave,localWaveValue,uniforms.uLocalWave,c.localWave??2.2,2);setRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,c.motionSpeed??.55,2);setRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,c.audioInfluence??1.35,2);setRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,c.fireflyAmount??.45,2);setRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,c.fireflyRange??1.2,2);controls.autoRotate=c.autoRotate!==false;motionTarget=c.motionEnabled===false?0:1;syncToggle(rotateBtn,controls.autoRotate);syncToggle(waveBtn,motionTarget>0);audio.pause();audio.innerHTML='';if(c.sound){const src=document.createElement('source');src.src=c.sound;src.type=c.soundType||'';audio.appendChild(src);audio.load()}setAudioUI()}
 function removeCloud(){if(currentPoints){scene.remove(currentPoints);currentPoints.geometry.dispose();currentPoints=null}}
-async function loadScene(index,push=true){if(!catalog.length)return;currentIndex=(index+catalog.length)%catalog.length;const token=++loadToken;showLoading('載入作品資料…');try{const configUrl=catalog[currentIndex].config;const res=await fetch(configUrl,{cache:'no-store'});if(!res.ok)throw new Error(`config ${res.status}`);const c=await res.json();if(token!==loadToken)return;applyConfig(c);renderSceneList();showLoading('載入點雲…');new PLYLoader().load(c.model,g=>{if(token!==loadToken){g.dispose();return}if(!g.getAttribute('position'))return fail('PLY 沒有頂點資料。');if(!g.getAttribute('color')){const a=new Float32Array(g.getAttribute('position').count*3).fill(1);g.setAttribute('color',new THREE.BufferAttribute(a,3))}removeCloud();currentPoints=new THREE.Points(g,material);currentPoints.frustumCulled=false;scene.add(currentPoints);fit(currentPoints,c);loadingText.textContent=`完成：${g.getAttribute('position').count.toLocaleString()} 點`;setTimeout(()=>loading.classList.add('hide'),250);if(push){const u=new URL(location.href);u.searchParams.set('scene',c.id);history.replaceState(null,'',u)}} ,e=>{if(token!==loadToken)return;if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);loadingProgress.value=p;loadingText.textContent=`載入點雲… ${p}%`}else loadingText.textContent=`載入點雲… ${(e.loaded/1048576).toFixed(1)} MB`},()=>{if(token===loadToken)fail(`無法載入 ${c.model}`)})}catch(e){console.error(e);fail('作品設定載入失敗。')}}
+async function loadScene(index,push=true){if(!catalog.length)return;currentIndex=(index+catalog.length)%catalog.length;const token=++loadToken;showLoading('載入作品資料…');try{const configUrl=catalog[currentIndex].config;const res=await fetch(configUrl,{cache:'no-store'});if(!res.ok)throw new Error(`config ${res.status}`);const c=await res.json();if(token!==loadToken)return;applyConfig(c);renderSceneList();showLoading('載入點雲…');new PLYLoader().load(c.model,g=>{if(token!==loadToken){g.dispose();return}if(!g.getAttribute('position'))return fail('PLY 沒有頂點資料。');if(!g.getAttribute('color')){const a=new Float32Array(g.getAttribute('position').count*3).fill(1);g.setAttribute('color',new THREE.BufferAttribute(a,3))}removeCloud();currentPoints=new THREE.Points(g,material);currentPoints.frustumCulled=false;scene.add(currentPoints);fit(currentPoints,c);setTimeout(()=>fit(currentPoints,c), 100); // 保險機制loadingText.textContent=`完成：${g.getAttribute('position').count.toLocaleString()} 點`;setTimeout(()=>loading.classList.add('hide'),250);if(push){const u=new URL(location.href);u.searchParams.set('scene',c.id);history.replaceState(null,'',u)}} ,e=>{if(token!==loadToken)return;if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);loadingProgress.value=p;loadingText.textContent=`載入點雲… ${p}%`}else loadingText.textContent=`載入點雲… ${(e.loaded/1048576).toFixed(1)} MB`},()=>{if(token===loadToken)fail(`無法載入 ${c.model}`)})}catch(e){console.error(e);fail('作品設定載入失敗。')}}
 function renderSceneList(){sceneList.innerHTML='';catalog.forEach((item,i)=>{const b=document.createElement('button');b.className=i===currentIndex?'is-current':'';b.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><span><strong>${item.title||item.id}</strong><small>${item.date||''}</small></span>`;b.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false');loadScene(i)};sceneList.appendChild(b)});prevSceneBtn.disabled=catalog.length<2;nextSceneBtn.disabled=catalog.length<2}
 async function initCatalog(){try{const r=await fetch('./scenes/index.json',{cache:'no-store'});if(!r.ok)throw new Error(r.status);const data=await r.json();catalog=await Promise.all(data.scenes.map(async s=>{try{const rr=await fetch(s.config,{cache:'no-store'});const c=await rr.json();return {...s,title:c.title,date:c.date,id:c.id||s.id}}catch{return s}}));const requested=new URL(location.href).searchParams.get('scene');let idx=catalog.findIndex(s=>s.id===requested);if(idx<0)idx=Math.max(0,catalog.findIndex(s=>s.id===data.defaultScene));renderSceneList();loadScene(idx,false)}catch(e){console.error(e);fail('無法載入 scenes/index.json')}}
 
