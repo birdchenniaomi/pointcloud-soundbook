@@ -67,6 +67,8 @@ function ensureDebugPanel(){
   debugPanel=document.createElement('section');
   debugPanel.id='debugPanel';
   debugPanel.style.cssText='position:fixed;left:12px;bottom:12px;z-index:40;min-width:290px;max-width:min(92vw,430px);padding:10px 11px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(5,7,7,.82);backdrop-filter:blur(12px);color:rgba(255,255,255,.78);font:10px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap';
+  debugPanel.hidden = true;
+  debugVisible = false;
   const head=document.createElement('div');
   head.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;color:#fff';
   const title=document.createElement('span'); title.textContent='VIEW CALIBRATION';
