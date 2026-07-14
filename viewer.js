@@ -35,7 +35,50 @@ void main(){vColor=color;vec3 p=position;float seed=hash(position*31.73);float s
 
 function syncToggle(button,on){button.setAttribute('aria-pressed',String(on));button.classList.toggle('is-active',on)}
 function setRange(input,output,uniform,value,digits=2){input.value=String(value);uniform.value=+value;output.value=(+value).toFixed(digits)}
-function fit(points){const g=points.geometry;g.computeBoundingBox();const c=new THREE.Vector3(),s=new THREE.Vector3();g.boundingBox.getCenter(c);g.boundingBox.getSize(s);g.translate(-c.x,-c.y,-c.z);cloudRadius=Math.max(s.x,s.y,s.z)*.5||1;uniforms.uScale.value=3.2/cloudRadius;uniforms.uRadius.value=cloudRadius;const d=cloudRadius/Math.tan(THREE.MathUtils.degToRad(camera.fov*.5));homePosition.set(d*.28,d*.1,d*1.15);camera.near=Math.max(cloudRadius/10000,.001);camera.far=Math.max(cloudRadius*100,1000);camera.updateProjectionMatrix();controls.minDistance=cloudRadius*.05;controls.maxDistance=cloudRadius*20;reset(false)}
+function fit(points){
+  const g=points.geometry;
+  const position=g.getAttribute('position');
+  if(!position||position.count===0)return;
+
+  // 先用原始座標計算中心，再逐點扣除中心。
+  // 這比 geometry.translate 對帶有大型世界座標的 PLY 更穩定。
+  g.computeBoundingBox();
+  const center=new THREE.Vector3();
+  g.boundingBox.getCenter(center);
+  for(let i=0;i<position.count;i++){
+    position.setXYZ(
+      i,
+      position.getX(i)-center.x,
+      position.getY(i)-center.y,
+      position.getZ(i)-center.z
+    );
+  }
+  position.needsUpdate=true;
+
+  // 清除任何可能殘留的物件位移，並重新計算置中後的範圍。
+  points.position.set(0,0,0);
+  points.rotation.set(0,0,0);
+  points.scale.set(1,1,1);
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+
+  cloudRadius=Math.max(g.boundingSphere?.radius||0,0.0001);
+  uniforms.uScale.value=3.2/cloudRadius;
+  uniforms.uRadius.value=cloudRadius;
+
+  homeTarget.set(0,0,0);
+  const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);
+  const distance=(cloudRadius/Math.sin(halfFov))*1.12;
+  homePosition.set(distance*.22,distance*.08,distance);
+
+  camera.near=Math.max(cloudRadius/5000,0.001);
+  camera.far=Math.max(cloudRadius*50,1000);
+  camera.updateProjectionMatrix();
+  controls.minDistance=Math.max(cloudRadius*.08,0.001);
+  controls.maxDistance=Math.max(cloudRadius*25,10);
+  controls.target.copy(homeTarget);
+  reset(false);
+}
 function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
 function showLoading(text='載入作品…'){loading.classList.remove('hide');loadingText.textContent=text;loadingProgress.value=0;errorBox.hidden=true}
 function fail(m){loading.classList.add('hide');errorBox.hidden=false;errorBox.textContent=m}
