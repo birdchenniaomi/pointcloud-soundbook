@@ -8,7 +8,7 @@
   "model": "./scenes/flower/model.ply",
   "sound": "./scenes/flower/sound.wav",
   "soundType": "audio/wav",
-  "pointSize": 0.005,
+  "pointSize": 0.006,
   "brightness": 1.0,
   "globalWave": 1.8,
   "localWave": 2.2,
