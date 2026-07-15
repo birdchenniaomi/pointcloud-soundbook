@@ -1,10 +1,10 @@
 {
-  "id": "SnackBar",
-  "title": "SnackBar",
-  "sceneLabel": "scene 03",
+  "id": "GameCenter",
+  "title": "GameCenter",
+  "sceneLabel": "scene 04",
   "subtitle": "point cloud · soundscape",
   "gps": "22.986578, 120.221494",
-  "date": "2021年07月",
+  "date": "2022年08月",
   "focus": [
     2.732732,
     -2.721444,
@@ -20,8 +20,8 @@
     0.997194,
     -0.051184
   ],
-  "model": "./scenes/SnackBar/model.ply",
-  "sound": "./scenes/SnackBar/sound.wav",
+  "model": "./scenes/GameCenter/model.ply",
+  "sound": "./scenes/GameCenter/sound.wav",
   "soundType": "audio/wav",
   "pointSize": 0.08,
   "brightness": 1,
