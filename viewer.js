@@ -356,14 +356,6 @@ function updateFlyThrough(delta){
   camera.lookAt(flyTarget);
 }
 
-function bindRange(input,output,uniform,digits=2){
-  if(!input||!output||!uniform)return;
-  input.oninput=()=>{
-    uniform.value=Number(input.value);
-    output.value=Number(input.value).toFixed(digits);
-  };
-}
-
 bindRange(pointSize,pointSizeValue,uniforms.uPointSize,3);bindRange(brightness,brightnessValue,uniforms.uBrightness,2);bindRange(globalWave,globalWaveValue,uniforms.uGlobalWave,2);bindRange(localWave,localWaveValue,uniforms.uLocalWave,2);bindRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,2);bindRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,2);bindRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,2);bindRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,2);
 function restoreFocusForAutoRotate(){
   // 將 OrbitControls 的旋轉中心恢復為此場景保存的 focus。
