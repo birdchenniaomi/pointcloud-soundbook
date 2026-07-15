@@ -8,6 +8,10 @@
     {
       "id": "subaru",
       "config": "./scenes/subaru/config.json"
+    },
+    {
+      "id": "SnackBar",
+      "config": "./scenes/SnackBar/config.json"
     }
   ]
 }
