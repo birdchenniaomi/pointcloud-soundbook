@@ -102,7 +102,13 @@ function ensureQuickSaveViewButton(){
   };
   const toolbar=resetBtn?.parentElement;
   if(toolbar){
-    toolbar.insertBefore(btn,settingsBtn||null);
+    // settingsBtn 不一定和 resetBtn 位於同一個父層；直接 insertBefore 會拋出 NotFoundError，
+    // 導致後面的 initCatalog() 不執行，畫面就會卡在「載入作品」。
+    if(settingsBtn && settingsBtn.parentElement===toolbar){
+      toolbar.insertBefore(btn,settingsBtn);
+    }else{
+      toolbar.appendChild(btn);
+    }
   }else{
     btn.style.position='fixed';btn.style.right='12px';btn.style.top='50%';btn.style.zIndex='38';
     document.body.appendChild(btn);
