@@ -12,6 +12,10 @@
     {
       "id": "SnackBar",
       "config": "./scenes/SnackBar/config.json"
+    },
+    {
+      "id": "GameCenter",
+      "config": "./scenes/GameCenter/config.json"
     }
   ]
 }
