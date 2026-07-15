@@ -15,11 +15,12 @@ const prevSceneBtn=$('#prevSceneBtn'),nextSceneBtn=$('#nextSceneBtn');
 
 let debugPanel=null,debugBody=null,debugVisible=false;
 let lastGeometryCenter=new THREE.Vector3(),lastBoundingCenter=new THREE.Vector3();
-let pickFocusMode=false, savedView=null;
+let pickFocusMode=false, pickFlyTargetMode=false, savedView=null;
 const raycaster=new THREE.Raycaster();
 const pointer=new THREE.Vector2();
 let focusMarker=null;
 let flyEnabled=false,flySpeed=.12,flyDistance=6,flyProgress=0,flyDirection=new THREE.Vector3(0,0,-1),flyOriginCamera=new THREE.Vector3(),flyOriginTarget=new THREE.Vector3();
+let flyTarget=new THREE.Vector3(),flyHasTarget=false,flyStopDistance=.35;
 let fireflySpeedValue=1,fireflyOrbitValue=1,fireflyNoiseValue=1;
 
 const scene=new THREE.Scene();
@@ -180,7 +181,7 @@ function ensureDebugPanel(){
   show.onclick=()=>{debugVisible=true;debugPanel.hidden=false};document.body.appendChild(show);
 }
 function captureView(){return {focus:controls.target.clone(),cameraPosition:camera.position.clone(),cameraUp:camera.up.clone().normalize()}}
-function viewConfigObject(){const v=captureView(),a=x=>+x.toFixed(6);return {focus:[a(v.focus.x),a(v.focus.y),a(v.focus.z)],cameraPosition:[a(v.cameraPosition.x),a(v.cameraPosition.y),a(v.cameraPosition.z)],cameraUp:[a(v.cameraUp.x),a(v.cameraUp.y),a(v.cameraUp.z)],glowStrength:a(uniforms.uGlowStrength.value),glowRadius:a(uniforms.uGlowRadius.value),fireflyAmount:a(uniforms.uFireflyAmount.value),fireflyRange:a(uniforms.uFireflyRange.value),fireflySpeed:a(uniforms.uFireflySpeed.value),fireflyOrbit:a(uniforms.uFireflyOrbit.value),fireflyNoise:a(uniforms.uFireflyNoise.value),displayMode:flyEnabled?'fly':'orbit',flySpeed:a(flySpeed),flyDistance:a(flyDistance),flyDirection:[a(flyDirection.x),a(flyDirection.y),a(flyDirection.z)]}}
+function viewConfigObject(){const v=captureView(),a=x=>+x.toFixed(6);const o={focus:[a(v.focus.x),a(v.focus.y),a(v.focus.z)],cameraPosition:[a(v.cameraPosition.x),a(v.cameraPosition.y),a(v.cameraPosition.z)],cameraUp:[a(v.cameraUp.x),a(v.cameraUp.y),a(v.cameraUp.z)],glowStrength:a(uniforms.uGlowStrength.value),glowRadius:a(uniforms.uGlowRadius.value),fireflyAmount:a(uniforms.uFireflyAmount.value),fireflyRange:a(uniforms.uFireflyRange.value),fireflySpeed:a(uniforms.uFireflySpeed.value),fireflyOrbit:a(uniforms.uFireflyOrbit.value),fireflyNoise:a(uniforms.uFireflyNoise.value),displayMode:flyEnabled?'fly':'orbit',flySpeed:a(flySpeed),flyStopDistance:a(flyStopDistance)};if(flyHasTarget)o.flyTarget=[a(flyTarget.x),a(flyTarget.y),a(flyTarget.z)];return o}
 function viewConfigText(){const v=viewConfigObject();return Object.entries(v).map(([k,val])=>`\"${k}\": ${JSON.stringify(val)}`).join(',\n')}
 function updateFocusMarker(position){
   if(!focusMarker){
@@ -190,8 +191,8 @@ function updateFocusMarker(position){
   }
   focusMarker.position.copy(position);focusMarker.scale.setScalar(Math.max(cloudRadius*.008,.002));focusMarker.visible=true;
 }
-function pickFocusFromPointer(event){
-  if(!pickFocusMode||!currentPoints)return;
+function pickPointFromPointer(event){
+  if((!pickFocusMode&&!pickFlyTargetMode)||!currentPoints)return;
   const rect=renderer.domElement.getBoundingClientRect();
   pointer.x=((event.clientX-rect.left)/rect.width)*2-1;
   pointer.y=-((event.clientY-rect.top)/rect.height)*2+1;
@@ -199,12 +200,32 @@ function pickFocusFromPointer(event){
   raycaster.params.Points.threshold=Math.max(cloudRadius*.012,.002);
   const hit=raycaster.intersectObject(currentPoints,false)[0];
   if(!hit)return;
+
+  if(pickFlyTargetMode){
+    flyTarget.copy(hit.point);
+    flyHasTarget=true;
+    flyEnabled=true;
+    flyOriginCamera.copy(camera.position);
+    flyOriginTarget.copy(controls.target);
+    flyDirection.subVectors(flyTarget,camera.position).normalize();
+    flyProgress=0;
+    controls.target.copy(flyTarget);
+    camera.lookAt(flyTarget);
+    controls.update();
+    updateFocusMarker(flyTarget);
+    setAutoRotate(false);
+    pickFlyTargetMode=false;
+    renderer.domElement.style.cursor='';
+    syncV12Controls();
+    return;
+  }
+
   controls.target.copy(hit.point);controls.update();updateFocusMarker(hit.point);
   pickFocusMode=false;renderer.domElement.style.cursor='';
   const btn=[...debugPanel.querySelectorAll('button')].find(b=>b.textContent.includes('CLICK A POINT'));
   if(btn){btn.textContent='PICK FOCUS';btn.style.background='rgba(255,255,255,.035)'}
 }
-renderer.domElement.addEventListener('pointerdown',pickFocusFromPointer);
+renderer.domElement.addEventListener('pointerdown',pickPointFromPointer);
 function updateDebugPanel(){
   if(!debugBody||!debugVisible)return;
   const f=v=>`${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)}`;
@@ -220,7 +241,9 @@ function updateDebugPanel(){
     `bbox center    ${f(lastBoundingCenter)}`,
     `distance       ${distance.toFixed(4)}`,
     `radius         ${cloudRadius.toFixed(4)}`,
-    `pick mode      ${pickFocusMode?'ON':'OFF'}`
+    `pick focus     ${pickFocusMode?'ON':'OFF'}`,
+    `pick fly       ${pickFlyTargetMode?'ON':'OFF'}`,
+    `fly target     ${flyHasTarget?f(flyTarget):'-'}`
   ].join('\n');
 }
 ensureDebugPanel();
@@ -267,12 +290,12 @@ function fit(points, config={}){
   camera.near=Math.max(cloudRadius/5000,0.001);camera.far=Math.max(cloudRadius*50,1000);camera.updateProjectionMatrix();
   controls.minDistance=Math.max(cloudRadius*.08,0.001);controls.maxDistance=Math.max(cloudRadius*25,10);
   controls.target.copy(homeTarget);camera.position.copy(homePosition);camera.lookAt(homeTarget);controls.update();
-  savedView=captureView();flyOriginCamera.copy(camera.position);flyOriginTarget.copy(controls.target);flyProgress=0;if(!(Array.isArray(config.flyDirection)&&config.flyDirection.length>=3)){flyDirection.subVectors(controls.target,camera.position).normalize();}updateFocusMarker(homeTarget);
+  savedView=captureView();flyOriginCamera.copy(camera.position);flyOriginTarget.copy(controls.target);flyProgress=0;flyHasTarget=Array.isArray(config.flyTarget)&&config.flyTarget.length>=3;if(flyHasTarget){flyTarget.set(Number(config.flyTarget[0]),Number(config.flyTarget[1]),Number(config.flyTarget[2]));flyDirection.subVectors(flyTarget,camera.position).normalize();}else if(!(Array.isArray(config.flyDirection)&&config.flyDirection.length>=3)){flyDirection.subVectors(controls.target,camera.position).normalize();}updateFocusMarker(homeTarget);
 }
 function reset(anim=true){if(!anim){camera.position.copy(homePosition);controls.target.copy(homeTarget);camera.lookAt(homeTarget);controls.update();return}const a=camera.position.clone(),b=controls.target.clone(),st=performance.now();(function step(now){const t=Math.min((now-st)/650,1),e=1-Math.pow(1-t,3);camera.position.lerpVectors(a,homePosition,e);controls.target.lerpVectors(b,homeTarget,e);if(t<1)requestAnimationFrame(step)})(st)}
 function showLoading(text='載入作品…'){loading.classList.remove('hide');loadingText.textContent=text;loadingProgress.value=0;errorBox.hidden=true}
 function fail(m){loading.classList.add('hide');errorBox.hidden=false;errorBox.textContent=m}
-function applyConfig(c){currentConfig=c;document.title=`Point Cloud Sound Book — ${c.title}`;$('#sceneTitle').textContent=c.title||c.id;$('#sceneGps').textContent=c.gps||'';$('#sceneDate').textContent=c.date||'';$('#sceneLabel').textContent=c.sceneLabel||c.id;$('#sceneSubtitle').textContent=c.subtitle||'';setRange(pointSize,pointSizeValue,uniforms.uPointSize,c.pointSize??.005,3);setRange(brightness,brightnessValue,uniforms.uBrightness,c.brightness??1,2);uniforms.uGlowStrength.value=Number(c.glowStrength??.35);uniforms.uGlowRadius.value=Number(c.glowRadius??.45);setRange(globalWave,globalWaveValue,uniforms.uGlobalWave,c.globalWave??1.8,2);setRange(localWave,localWaveValue,uniforms.uLocalWave,c.localWave??2.2,2);setRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,c.motionSpeed??.55,2);setRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,c.audioInfluence??1.35,2);setRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,c.fireflyAmount??.45,2);setRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,c.fireflyRange??1.2,2);uniforms.uFireflySpeed.value=Number(c.fireflySpeed??1);uniforms.uFireflyOrbit.value=Number(c.fireflyOrbit??1);uniforms.uFireflyNoise.value=Number(c.fireflyNoise??1);flyEnabled=(c.displayMode==='fly'||c.flyEnabled===true);flySpeed=Number(c.flySpeed??.12);flyDistance=Math.max(.1,Number(c.flyDistance??6));if(Array.isArray(c.flyDirection)&&c.flyDirection.length>=3)flyDirection.set(Number(c.flyDirection[0]),Number(c.flyDirection[1]),Number(c.flyDirection[2])).normalize();controls.autoRotate=!flyEnabled&&c.autoRotate!==false;motionTarget=c.motionEnabled===false?0:1;syncToggle(rotateBtn,controls.autoRotate);syncToggle(waveBtn,motionTarget>0);audio.pause();audio.innerHTML='';if(c.sound){const src=document.createElement('source');src.src=c.sound;src.type=c.soundType||'';audio.appendChild(src);audio.load()}setAudioUI();syncV12Controls()}
+function applyConfig(c){currentConfig=c;document.title=`Point Cloud Sound Book — ${c.title}`;$('#sceneTitle').textContent=c.title||c.id;$('#sceneGps').textContent=c.gps||'';$('#sceneDate').textContent=c.date||'';$('#sceneLabel').textContent=c.sceneLabel||c.id;$('#sceneSubtitle').textContent=c.subtitle||'';setRange(pointSize,pointSizeValue,uniforms.uPointSize,c.pointSize??.005,3);setRange(brightness,brightnessValue,uniforms.uBrightness,c.brightness??1,2);uniforms.uGlowStrength.value=Number(c.glowStrength??.35);uniforms.uGlowRadius.value=Number(c.glowRadius??.45);setRange(globalWave,globalWaveValue,uniforms.uGlobalWave,c.globalWave??1.8,2);setRange(localWave,localWaveValue,uniforms.uLocalWave,c.localWave??2.2,2);setRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,c.motionSpeed??.55,2);setRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,c.audioInfluence??1.35,2);setRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,c.fireflyAmount??.45,2);setRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,c.fireflyRange??1.2,2);uniforms.uFireflySpeed.value=Number(c.fireflySpeed??1);uniforms.uFireflyOrbit.value=Number(c.fireflyOrbit??1);uniforms.uFireflyNoise.value=Number(c.fireflyNoise??1);flyEnabled=(c.displayMode==='fly'||c.flyEnabled===true);flySpeed=Number(c.flySpeed??.12);flyDistance=Math.max(.1,Number(c.flyDistance??6));flyStopDistance=Math.max(.01,Number(c.flyStopDistance??.35));flyHasTarget=Array.isArray(c.flyTarget)&&c.flyTarget.length>=3;if(flyHasTarget)flyTarget.set(Number(c.flyTarget[0]),Number(c.flyTarget[1]),Number(c.flyTarget[2]));if(Array.isArray(c.flyDirection)&&c.flyDirection.length>=3)flyDirection.set(Number(c.flyDirection[0]),Number(c.flyDirection[1]),Number(c.flyDirection[2])).normalize();controls.autoRotate=!flyEnabled&&c.autoRotate!==false;motionTarget=c.motionEnabled===false?0:1;syncToggle(rotateBtn,controls.autoRotate);syncToggle(waveBtn,motionTarget>0);audio.pause();audio.innerHTML='';if(c.sound){const src=document.createElement('source');src.src=c.sound;src.type=c.soundType||'';audio.appendChild(src);audio.load()}setAudioUI();syncV12Controls()}
 function removeCloud(){if(currentPoints){scene.remove(currentPoints);currentPoints.geometry.dispose();currentPoints=null}}
 async function loadScene(index,push=true){if(!catalog.length)return;currentIndex=(index+catalog.length)%catalog.length;const token=++loadToken;showLoading('載入作品資料…');try{const configUrl=catalog[currentIndex].config;const res=await fetch(configUrl,{cache:'no-store'});if(!res.ok)throw new Error(`config ${res.status}`);const c=await res.json();if(token!==loadToken)return;applyConfig(c);renderSceneList();showLoading('載入點雲…');new PLYLoader().load(c.model,g=>{if(token!==loadToken){g.dispose();return}if(!g.getAttribute('position'))return fail('PLY 沒有頂點資料。');if(!g.getAttribute('color')){const a=new Float32Array(g.getAttribute('position').count*3).fill(1);g.setAttribute('color',new THREE.BufferAttribute(a,3))}removeCloud();currentPoints=new THREE.Points(g,material);currentPoints.frustumCulled=false;scene.add(currentPoints);fit(currentPoints,c);loadingText.textContent=`完成：${g.getAttribute('position').count.toLocaleString()} 點`;setTimeout(()=>loading.classList.add('hide'),250);if(push){const u=new URL(location.href);u.searchParams.set('scene',c.id);history.replaceState(null,'',u)}} ,e=>{if(token!==loadToken)return;if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);loadingProgress.value=p;loadingText.textContent=`載入點雲… ${p}%`}else loadingText.textContent=`載入點雲… ${(e.loaded/1048576).toFixed(1)} MB`},()=>{if(token===loadToken)fail(`無法載入 ${c.model}`)})}catch(e){console.error(e);fail('作品設定載入失敗。')}}
 function renderSceneList(){sceneList.innerHTML='';catalog.forEach((item,i)=>{const b=document.createElement('button');b.className=i===currentIndex?'is-current':'';b.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><span><strong>${item.title||item.id}</strong><small>${item.date||''}</small></span>`;b.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false');loadScene(i)};sceneList.appendChild(b)});prevSceneBtn.disabled=catalog.length<2;nextSceneBtn.disabled=catalog.length<2}
@@ -293,7 +316,7 @@ function ensureQuickFlyButton(){
   const btn=document.createElement('button');btn.id='quickFlyBtn';btn.type='button';btn.title='直線前進';btn.setAttribute('aria-label','切換直線前進');btn.textContent='↟';
   btn.style.cssText='display:grid;place-items:center;width:38px;height:38px;padding:0;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(5,7,7,.58);color:rgba(255,255,255,.55);font:18px/1 sans-serif;cursor:pointer;backdrop-filter:blur(10px)';
   const sync=()=>{btn.setAttribute('aria-pressed',String(flyEnabled));btn.style.color=flyEnabled?'#fff':'rgba(255,255,255,.55)';btn.style.background=flyEnabled?'rgba(255,255,255,.12)':'rgba(5,7,7,.58)'};
-  btn.onclick=()=>{flyEnabled=!flyEnabled;flyProgress=0;flyOriginCamera.copy(camera.position);flyOriginTarget.copy(controls.target);flyDirection.subVectors(controls.target,camera.position).normalize();if(flyEnabled)setAutoRotate(false);sync();syncV12Controls()};
+  btn.onclick=()=>{if(flyEnabled||pickFlyTargetMode){flyEnabled=false;pickFlyTargetMode=false;renderer.domElement.style.cursor='';sync();syncV12Controls();return;}pickFocusMode=false;pickFlyTargetMode=true;renderer.domElement.style.cursor='crosshair';setAutoRotate(false);btn.style.color='#fff';btn.style.background='rgba(255,255,255,.12)';};
   btn._sync=sync;sync();
   const toolbar=resetBtn?.parentElement;if(toolbar)toolbar.appendChild(btn);else{btn.style.position='fixed';btn.style.right='12px';btn.style.top='58%';btn.style.zIndex='38';document.body.appendChild(btn)}
 }
@@ -307,21 +330,32 @@ function ensureV12Controls(){
   const fly=makeCompactRange('FLY SPEED',0,3,.01,flySpeed,v=>flySpeed=v,2);
   const distance=makeCompactRange('FLY DISTANCE',.5,50,.5,flyDistance,v=>flyDistance=v,1);
   const toggle=document.createElement('button');toggle.type='button';toggle.style.cssText='width:100%;margin-top:9px;padding:7px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer';
-  const sync=()=>{toggle.textContent=flyEnabled?'FLY THROUGH: ON':'FLY THROUGH: OFF';toggle.style.color=flyEnabled?'#fff':'rgba(255,255,255,.55)';toggle.style.background=flyEnabled?'rgba(255,255,255,.1)':'transparent'};
-  toggle.onclick=()=>{flyEnabled=!flyEnabled;flyProgress=0;flyOriginCamera.copy(camera.position);flyOriginTarget.copy(controls.target);flyDirection.subVectors(controls.target,camera.position).normalize();if(flyEnabled)setAutoRotate(false);sync()};sync();
+  const sync=()=>{toggle.textContent=pickFlyTargetMode?'CLICK TARGET IN CLOUD…':(flyEnabled?'FLY TO TARGET: ON':'FLY TO TARGET: OFF');toggle.style.color=(flyEnabled||pickFlyTargetMode)?'#fff':'rgba(255,255,255,.55)';toggle.style.background=(flyEnabled||pickFlyTargetMode)?'rgba(255,255,255,.1)':'transparent'};
+  toggle.onclick=()=>{if(flyEnabled||pickFlyTargetMode){flyEnabled=false;pickFlyTargetMode=false;renderer.domElement.style.cursor='';sync();syncV12Controls();return;}pickFocusMode=false;pickFlyTargetMode=true;renderer.domElement.style.cursor='crosshair';setAutoRotate(false);toggle.textContent='CLICK TARGET IN CLOUD…';toggle.style.color='#fff';toggle.style.background='rgba(255,255,255,.1)'};sync();
   box._syncConfig=(c)=>{speed.input.value=uniforms.uFireflySpeed.value;speed.out.textContent=Number(uniforms.uFireflySpeed.value).toFixed(2);orbit.input.value=uniforms.uFireflyOrbit.value;orbit.out.textContent=Number(uniforms.uFireflyOrbit.value).toFixed(2);noise.input.value=uniforms.uFireflyNoise.value;noise.out.textContent=Number(uniforms.uFireflyNoise.value).toFixed(2);fly.input.value=flySpeed;fly.out.textContent=Number(flySpeed).toFixed(2);distance.input.value=flyDistance;distance.out.textContent=Number(flyDistance).toFixed(1);sync()};
   box.append(title,speed.row,orbit.row,noise.row,fly.row,distance.row,toggle);settings.appendChild(box);
 }
 function syncV12Controls(){const box=document.querySelector('#v12Controls');if(box&&box._syncConfig)box._syncConfig(currentConfig||{});const b=document.querySelector('#quickFlyBtn');if(b&&b._sync)b._sync()}
 function updateFlyThrough(delta){
-  if(!flyEnabled||!currentPoints)return;
-  const step=flySpeed*delta*Math.max(cloudRadius*.08,.01);
-  flyProgress+=step;
-  if(flyProgress>flyDistance){flyProgress=0;camera.position.copy(flyOriginCamera);controls.target.copy(flyOriginTarget)}
-  const move=flyDirection.clone().multiplyScalar(step);
-  camera.position.add(move);controls.target.add(move);
+  if(!flyEnabled||!currentPoints||!flyHasTarget)return;
+  const remaining=camera.position.distanceTo(flyTarget);
+  const stop=Math.max(flyStopDistance,cloudRadius*.006);
+  if(remaining<=stop){
+    flyEnabled=false;
+    camera.lookAt(flyTarget);
+    controls.target.copy(flyTarget);
+    controls.update();
+    syncV12Controls();
+    return;
+  }
+  const maxStep=flySpeed*delta*Math.max(cloudRadius*.08,.01);
+  const step=Math.min(maxStep,Math.max(0,remaining-stop));
+  flyDirection.subVectors(flyTarget,camera.position).normalize();
+  camera.position.addScaledVector(flyDirection,step);
+  controls.target.copy(flyTarget);
+  camera.lookAt(flyTarget);
 }
-function bindRange(input,output,uniform,digits=2){input.oninput=()=>{uniform.value=+input.value;output.value=(+input.value).toFixed(digits)}}
+
 bindRange(pointSize,pointSizeValue,uniforms.uPointSize,3);bindRange(brightness,brightnessValue,uniforms.uBrightness,2);bindRange(globalWave,globalWaveValue,uniforms.uGlobalWave,2);bindRange(localWave,localWaveValue,uniforms.uLocalWave,2);bindRange(motionSpeed,motionSpeedValue,uniforms.uMotionSpeed,2);bindRange(audioInfluence,audioInfluenceValue,uniforms.uAudioInfluence,2);bindRange(fireflyAmount,fireflyAmountValue,uniforms.uFireflyAmount,2);bindRange(fireflyRange,fireflyRangeValue,uniforms.uFireflyRange,2);
 function restoreFocusForAutoRotate(){
   // 將 OrbitControls 的旋轉中心恢復為此場景保存的 focus。
@@ -340,4 +374,4 @@ function setAutoRotate(on){
 settingsBtn.onclick=()=>{settings.hidden=!settings.hidden;settingsBtn.setAttribute('aria-expanded',String(!settings.hidden))};sceneMenuBtn.onclick=()=>{sceneDrawer.hidden=!sceneDrawer.hidden;sceneMenuBtn.setAttribute('aria-expanded',String(!sceneDrawer.hidden))};sceneCloseBtn.onclick=()=>{sceneDrawer.hidden=true;sceneMenuBtn.setAttribute('aria-expanded','false')};prevSceneBtn.onclick=()=>loadScene(currentIndex-1);nextSceneBtn.onclick=()=>loadScene(currentIndex+1);resetBtn.onclick=()=>reset(true);waveBtn.onclick=()=>{const on=waveBtn.getAttribute('aria-pressed')!=='true';syncToggle(waveBtn,on);motionTarget=on?1:0};rotateBtn.onclick=()=>setAutoRotate(!controls.autoRotate);fullscreenBtn.onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch(e){console.warn(e)}};
 let ctx=null,analyser=null,data=null,source=null;async function initAudio(){if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaElementSource(audio);analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.92;data=new Uint8Array(analyser.frequencyBinCount);source.connect(analyser);analyser.connect(ctx.destination)}if(ctx.state==='suspended')await ctx.resume()}function setAudioUI(){const p=!audio.paused;audioBtn.classList.toggle('is-playing',p);audioBtn.setAttribute('aria-pressed',String(p));audioIcon.textContent=p?'Ⅱ':'▶';audioLabel.textContent=p?'pause':'listen'}audioBtn.onclick=async()=>{try{await initAudio();audio.paused?await audio.play():audio.pause();setAudioUI()}catch(e){console.error(e);alert('音檔無法播放。')}};audio.onplay=setAudioUI;audio.onpause=setAudioUI;
 function bands(){const smooth=(c,t,a,r)=>THREE.MathUtils.lerp(c,t,t>c?a:r);if(!analyser||audio.paused){uniforms.uBass.value=smooth(uniforms.uBass.value,0,.02,.012);uniforms.uMid.value=smooth(uniforms.uMid.value,0,.018,.010);uniforms.uHigh.value=smooth(uniforms.uHigh.value,0,.014,.008);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,0,.018,.006);return}analyser.getByteFrequencyData(data);const avg=(a,b)=>{let s=0;for(let i=a;i<b;i++)s+=data[i];return s/(b-a)/255};const bass=avg(1,12),mid=avg(12,55),high=avg(55,150),env=Math.max(0,(bass*.65+mid*.28+high*.07)-.08);uniforms.uBass.value=smooth(uniforms.uBass.value,bass,.045,.010);uniforms.uMid.value=smooth(uniforms.uMid.value,mid,.032,.008);uniforms.uHigh.value=smooth(uniforms.uHigh.value,high,.022,.006);uniforms.uEnvelope.value=smooth(uniforms.uEnvelope.value,env,.028,.004)}
-controls.addEventListener('start',()=>{clearTimeout(resumeTimer);setAutoRotate(false)});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(currentConfig?.autoRotate!==false)setAutoRotate(true)},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();ensureQuickSaveViewButton();ensureQuickFlyButton();ensureV12Controls();renderer.setAnimationLoop(()=>{const delta=Math.min(clock.getDelta(),.05);uniforms.uTime.value+=delta;bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);updateFlyThrough(delta);controls.update();updateDebugPanel();renderer.render(scene,camera)});initCatalog();
+controls.addEventListener('start',()=>{clearTimeout(resumeTimer);setAutoRotate(false);if(!pickFlyTargetMode){flyEnabled=false;syncV12Controls()}});controls.addEventListener('end',()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{if(!flyEnabled&&!pickFlyTargetMode&&currentConfig?.autoRotate!==false)setAutoRotate(true)},5000)});function resize(){camera.aspect=viewer.clientWidth/viewer.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewer.clientWidth,viewer.clientHeight,false)}addEventListener('resize',resize);resize();ensureQuickSaveViewButton();ensureQuickFlyButton();ensureV12Controls();renderer.setAnimationLoop(()=>{const delta=Math.min(clock.getDelta(),.05);uniforms.uTime.value+=delta;bands();uniforms.uMotion.value=THREE.MathUtils.lerp(uniforms.uMotion.value,motionTarget,.025);updateFlyThrough(delta);controls.update();updateDebugPanel();renderer.render(scene,camera)});initCatalog();
