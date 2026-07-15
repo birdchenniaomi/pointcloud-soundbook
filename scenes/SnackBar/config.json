@@ -23,7 +23,7 @@
   "model": "./scenes/SnackBar/model.ply",
   "sound": "./scenes/SnackBar/sound.wav",
   "soundType": "audio/wav",
-  "pointSize": 0.16,
+  "pointSize": 0.1,
   "brightness": 1,
   "globalWave": 1.8,
   "localWave": 2.2,
