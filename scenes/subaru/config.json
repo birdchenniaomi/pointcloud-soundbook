@@ -9,14 +9,14 @@
   "sound": "./scenes/subaru/sound.mp3",
   "soundType": "audio/mpeg",
   "focus": [
-    3.22896,
-    -4.762233,
-    -0.274498
+    2.479948,
+    -4.3815,
+    -0.875097
   ],
   "cameraPosition": [
-    -2.429516,
-    -2.883835,
-    18.201884
+    -5.022576,
+    -3.343119,
+    17.001069
   ],
   "cameraUp": [
     -0.042275,
@@ -34,5 +34,16 @@
   "autoRotate": true,
   "motionEnabled": true,
   "glowStrength": 1.4,
-  "glowRadius": 0.45
+  "glowRadius": 0.45,
+  "fireflySpeed": 1,
+  "fireflyOrbit": 1,
+  "fireflyNoise": 1,
+  "displayMode": "fly",
+  "flySpeed": 0.12,
+  "flyDistance": 6,
+  "flyDirection": [
+    0.386425,
+    -0.053554,
+    -0.920765
+  ]
 }
