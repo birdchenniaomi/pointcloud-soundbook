@@ -16,6 +16,10 @@
     {
       "id": "GameCenter",
       "config": "./scenes/GameCenter/config.json"
+    },
+    {
+      "id": "dormitory",
+      "config": "./scenes/dormitory/config.json"
     }
   ]
 }
